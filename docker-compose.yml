@@ -1,0 +1,14 @@
+services:
+  kazanma-lab:
+    build: .
+    ports:
+      - "3838:3838"
+    env_file:
+      - .env
+    volumes:
+      - kazanma-data:/srv/shiny-server/data
+    restart: unless-stopped
+
+volumes:
+  kazanma-data:
+

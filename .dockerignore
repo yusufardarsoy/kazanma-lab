@@ -1,0 +1,10 @@
+.git
+.github
+.Rhistory
+.RData
+.Renviron
+.env
+data/*.sqlite
+data/cache
+tests
+
