@@ -7,6 +7,7 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 ## Şu anda çalışanlar
 
 - Şifreli, oturum bazlı kişisel giriş
+- 10 hatalı denemeden sonra 20 dakikalık oturum kilidi
 - Poisson tabanlı ev / beraberlik / deplasman ve kesin skor matrisi
 - Pozisyon kotasına göre muhtemel ilk 11 (1 kaleci, 4 savunma, 3 orta saha, 3 hücum)
 - İlk 11 olasılığı ve beklenen dakika ağırlıklı gol/kart projeksiyonu
@@ -125,4 +126,3 @@ git push -u origin main
 ## Sorumlu kullanım
 
 Olasılık, kesinlik değildir. Özellikle kadro açıklanmadan önce oyuncu pazarları yüksek belirsizlik taşır. Model ölçümleri yeterli gerçek maç örneği olmadan yayınlanmamalı; düşük kapsamlı liglerde veri boşlukları açıkça gösterilmelidir. Bu yazılım bahis tavsiyesi değildir.
-

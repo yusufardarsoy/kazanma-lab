@@ -1,6 +1,8 @@
 app_server <- function(input, output, session, config) {
   authenticated <- reactiveVal(FALSE)
   login_message <- reactiveVal(NULL)
+  failed_logins <- reactiveVal(0L)
+  locked_until <- reactiveVal(as.POSIXct(NA))
   prediction_value <- reactiveVal(build_prediction(apply_postmatch_learning(demo_match_data(), config$db_path)))
   import_message <- reactiveVal(NULL)
   live_snapshot <- reactiveVal(NULL)
@@ -10,11 +12,28 @@ app_server <- function(input, output, session, config) {
   })
 
   observeEvent(input$login_submit, {
+    now <- Sys.time()
+    lock_time <- locked_until()
+    if (!is.na(lock_time) && now < lock_time) {
+      minutes_left <- max(1L, ceiling(as.numeric(difftime(lock_time, now, units = "mins"))))
+      login_message(paste("Çok fazla hatalı deneme. Tekrar denemek için", minutes_left, "dakika bekle."))
+      return()
+    }
+
     if (verify_login(input$login_username, input$login_password, config)) {
       authenticated(TRUE)
       login_message(NULL)
+      failed_logins(0L)
+      locked_until(as.POSIXct(NA))
     } else {
-      login_message("Kullanıcı adı veya şifre yanlış.")
+      next_attempt <- failed_logins() + 1L
+      failed_logins(next_attempt)
+      if (next_attempt >= 10L) {
+        locked_until(now + 20 * 60)
+        login_message("Çok fazla hatalı deneme. Giriş 20 dakika kilitlendi.")
+      } else {
+        login_message(paste0("Kullanıcı adı veya şifre yanlış. Kalan deneme: ", 10L - next_attempt, "."))
+      }
     }
   }, ignoreInit = TRUE)
 
