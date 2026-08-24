@@ -35,6 +35,7 @@ source_files <- c(
   "R/demo_data.R",
   "R/super_lig_data.R",
   "R/model_engine.R",
+  "R/betting_engine.R",
   "R/storage.R",
   "R/provider_api_football.R",
   "R/charts.R",

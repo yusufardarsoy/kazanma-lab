@@ -1,7 +1,8 @@
 test_that("authenticated dashboard renders the Super Lig workspace", {
   html <- htmltools::renderTags(dashboard_ui(read_app_config()))$html
   expect_match(html, "Süper Lig DNA", fixed = TRUE)
-  expect_match(html, "TFF-2026-W03-09", fixed = TRUE)
+  expect_match(html, "317800", fixed = TRUE)
+  expect_match(html, "Oran radarı", fixed = TRUE)
   expect_match(html, "Tahmini kaydet", fixed = TRUE)
 })
 
@@ -23,9 +24,10 @@ test_that("login opens a working Super Lig dashboard server", {
     freshness <- paste(as.character(output$freshness_ui), collapse = " ")
     lineup <- paste(as.character(output$home_lineup), collapse = " ")
     expect_match(root, "Maç merkezi", fixed = TRUE)
-    expect_match(header, "Gençlerbirliği", fixed = TRUE)
+    expect_match(header, "Kocaelispor", fixed = TRUE)
     expect_match(freshness, "TFF fikstürü", fixed = TRUE)
-    expect_match(lineup, "Rol bazlı", fixed = TRUE)
+    expect_match(lineup, "Serhat Öztaşdelen", fixed = TRUE)
+    expect_no_error(output$odds_top_table)
     expect_no_error(output$scorecard_table)
     expect_no_error(output$comparison_table)
   })

@@ -14,7 +14,11 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 - Pres, topa sahip olma, dikeylik, genişlik, geçiş, duran top ve disiplin karşılaştırması
 - Kural tabanlı taktik eşleşme notları
 - Süper Lig'deki 18 takım için teknik direktör, oyun kimliği, güçlü yön, zayıflık ve profil güveni
-- 28-31 Ağustos 2026 tarihli resmi 3. hafta programında dokuz seçilebilir maç
+- TFF'nin 34 haftalık resmi eşleşme kataloğunda 306 aranabilir maç; açıklanan gün/saatler ayrıca işaretli
+- Takım filtresi ve takım/maç adına göre fikstür araması
+- Kocaelispor–Amed için doğrulanmış eksikler, güncel muhtemel 11 ve maça özel xG düzeltmesi
+- Kullanıcının gönderdiği İddaa görüntüsünde 1X2, gol, KG, ilk yarı, ilk gol, doğru skor ve golcü oranlarını modelle karşılaştıran oran radarı
+- Marjsız piyasa olasılığı, başabaş olasılığı, model farkı, beklenen değer, veri bayatlığı ve risk etiketi
 - Her analiz anını SQLite'a kaydeden model hafızası
 - Ekrandan gerçek skor girişi veya toplu CSV içe aktarma
 - İleriye dönük 1X2 isabeti, Brier skoru ve log loss; sonuçtan sonra üretilen tahminleri ölçümden çıkaran zaman kontrolü
@@ -24,11 +28,12 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 ## Ekranlar
 
 1. **Maç merkezi:** kazanma olasılıkları, beklenen gol, en olası skor ve skor matrisi.
-2. **Muhtemel 11:** oyuncu bazında başlama olasılığı ve rol.
-3. **Stil savaşı:** iki takımın normalize oyun profili ve taktik kırılma noktaları.
-4. **Süper Lig DNA:** 18 takımın teknik direktörü, taktik özeti, güçlü/zayıf yönleri ve veri güveni.
-5. **Oyuncu radarları:** ücretsiz güncel kadro akışı yokken açıkça işaretlenmiş rol bazlı gol/kart öncülleri.
-6. **Model hafızası:** analiz geçmişi, maç-sonu sonuç girişi ve ileriye dönük kalibrasyon ölçümleri.
+2. **Oran radarı:** oran, başabaş/marjsız piyasa olasılığı, model olasılığı, fark ve risk.
+3. **Muhtemel 11:** oyuncu bazında başlama olasılığı ve rol.
+4. **Stil savaşı:** iki takımın normalize oyun profili ve taktik kırılma noktaları.
+5. **Süper Lig DNA:** 18 takımın teknik direktörü, taktik özeti, güçlü/zayıf yönleri ve veri güveni.
+6. **Oyuncu radarları:** güncel isimli kadro yoksa açıkça işaretlenmiş rol bazlı gol/kart öncülleri.
+7. **Model hafızası:** analiz geçmişi, maç-sonu sonuç girişi ve ileriye dönük kalibrasyon ölçümleri.
 
 ## Yerelde çalıştırma
 
@@ -53,6 +58,8 @@ Varsayılan yerel geliştirme girişi `arda / kazanma-lab`'dır. Bu sadece geli�
 - Güncellik tarihi: 24 Ağustos 2026.
 
 Kaynak envanteri `data/super_lig_sources.csv` dosyasındadır. Taktik puanlar gözlenmiş tracking verisi gibi sunulmaz; teknik direktör veya büyük kadro değişimi olan takımların profil güveni özellikle düşürülür.
+
+Kocaelispor–Amed oranları kullanıcı tarafından gönderilmiş 24 Ağustos görüntüsüdür; canlı akış değildir. Aynı görüntüde Petković golcü oranı bulunmasına rağmen oyuncunun maçta olmadığı doğrulandığı için bu satır “bayat oran” olarak değerlendirme dışıdır. Korner ve kart bahislerinde kalibre edilmiş olay modeli bulunmadığından bu marketler için olasılık uydurulmaz.
 
 ## Güvenli kişisel kullanım
 

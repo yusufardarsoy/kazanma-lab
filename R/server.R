@@ -51,6 +51,7 @@ app_server <- function(input, output, session, config) {
     switch(
       input$section %||% "overview",
       overview = overview_ui(),
+      odds = odds_ui(),
       lineups = lineups_ui(),
       styles = styles_ui(),
       teams = teams_ui(),
@@ -59,6 +60,13 @@ app_server <- function(input, output, session, config) {
       overview_ui()
     )
   })
+
+  observeEvent(input$team_filter, {
+    req(authenticated())
+    choices <- super_lig_fixture_choices(input$team_filter %||% "")
+    selected <- if (length(choices)) unname(choices[[1]]) else character()
+    updateSelectizeInput(session, "fixture_id", choices = choices, selected = selected, server = TRUE)
+  }, ignoreInit = TRUE)
 
   observeEvent(input$fixture_id, {
     req(authenticated(), input$fixture_id)
@@ -69,6 +77,10 @@ app_server <- function(input, output, session, config) {
     req(authenticated(), input$fixture_id)
     prediction <- build_selected_prediction(input$fixture_id)
     prediction_value(prediction)
+    if (!isTRUE(prediction$fixture$scheduled[[1]])) {
+      showNotification("Bu eşleşmenin resmi günü/saatı henüz açıklanmadı. Önizleme açık; tahmin dondurulmadı.", type = "warning", duration = 7)
+      return()
+    }
     record_analysis(prediction, config$db_path)
     showNotification("Tahmin zaman damgasıyla donduruldu ve karşılaştırma hafızasına kaydedildi.", type = "message")
   }, ignoreInit = TRUE)
@@ -112,12 +124,18 @@ app_server <- function(input, output, session, config) {
 
   output$match_header <- renderUI({
     p <- prediction()
+    kickoff_label <- if (isTRUE(p$fixture$scheduled[[1]])) {
+      format(p$fixture$kickoff, "%d %B %Y %H:%M")
+    } else {
+      paste0(p$fixture$round, ". hafta · tarih bekleniyor")
+    }
+    venue_label <- if (!is.na(p$fixture$venue[[1]]) && nzchar(p$fixture$venue[[1]])) p$fixture$venue[[1]] else "Stadyum programla açıklanacak"
     div(
       class = "match-header",
       div(
-        div(class = "eyebrow", paste(p$fixture$competition, "·", format(p$fixture$kickoff, "%d %B %Y %H:%M"))),
+        div(class = "eyebrow", paste(p$fixture$competition, "·", kickoff_label)),
         h1(paste(p$home$team, "—", p$away$team)),
-        p(paste(p$fixture$venue, "· Model güveni", scales::percent(p$confidence, accuracy = 1)))
+        p(paste(venue_label, "· Model güveni", scales::percent(p$confidence, accuracy = 1)))
       ),
       div(
         class = "score-call",
@@ -144,6 +162,108 @@ app_server <- function(input, output, session, config) {
   output$style_plot <- renderPlot(plot_styles(prediction()), bg = "transparent", res = 110)
   output$scorer_plot <- renderPlot(plot_player_probability(prediction(), "scorer"), bg = "transparent", res = 110)
   output$card_plot <- renderPlot(plot_player_probability(prediction(), "card"), bg = "transparent", res = 110)
+
+  odds_comparison <- reactive(compare_odds(prediction()))
+
+  output$overview_odds_teaser <- renderUI({
+    comparison <- odds_comparison()
+    if (nrow(comparison) == 0) return(NULL)
+    top <- top_odds_options(comparison, 3L)
+    div(
+      class = "panel odds-teaser",
+      div(
+        div(class = "panel-kicker", "ORAN RADARI · KULLANICI GÖRÜNTÜSÜ"),
+        h3("Modelin piyasa fiyatından ayrıldığı seçenekler"),
+        p("24 Ağustos oran görüntüsü; canlı değildir. Model farkı, kesin kazanç anlamına gelmez.")
+      ),
+      div(
+        class = "odds-option-grid",
+        lapply(seq_len(nrow(top)), function(i) {
+          row <- top[i, ]
+          div(
+            class = "odds-option",
+            span(paste(row$market, "·", row$selection)),
+            strong(format(row$odds, nsmall = 2)),
+            small(paste("Model", scales::percent(row$model_probability, accuracy = .1), "·", row$signal))
+          )
+        })
+      ),
+      actionLink("open_odds", "Tüm oran karşılaştırmasını aç →", class = "odds-link")
+    )
+  })
+
+  observeEvent(input$open_odds, {
+    updateRadioButtons(session, "section", selected = "odds")
+  }, ignoreInit = TRUE)
+
+  output$odds_empty_state <- renderUI({
+    if (nrow(odds_comparison()) > 0) return(NULL)
+    div(
+      class = "panel caveat-panel",
+      strong("Bu maç için oran görüntüsü yok."),
+      " Tahmin motoru çalışır; oran karşılaştırması yalnızca tarih ve kaynak bilgisi olan bir görüntü eklendiğinde açılır."
+    )
+  })
+
+  output$odds_summary_cards <- renderUI({
+    summary <- odds_snapshot_summary(odds_comparison())
+    if (is.null(summary)) return(NULL)
+    div(
+      class = "metric-strip",
+      metric_card("Model favorisi", summary$model_favorite, "1X2 model olasılığı", "gold"),
+      metric_card("Piyasa favorisi", summary$market_favorite, "Marj temizlenmeden en düşük oran", "teal"),
+      metric_card("1X2 bahis marjı", scales::percent(summary$bookmaker_margin, accuracy = .1), "Ham oranlar toplamı − %100", "violet"),
+      metric_card("Veri uyarısı", paste(summary$stale_count, "bayat satır"), "Petković oranı değerlendirme dışı", "neutral")
+    )
+  })
+
+  output$odds_plot <- renderPlot({
+    comparison <- odds_comparison()
+    validate(need(nrow(comparison) > 0, "Bu maç için oran verisi yok."))
+    plot_odds_comparison(comparison)
+  }, bg = "transparent", res = 110)
+
+  format_odds_table <- function(data) {
+    data |>
+      dplyr::transmute(
+        Market = market,
+        Seçenek = selection,
+        Oran = format(round(odds, 2), nsmall = 2),
+        Model = scales::percent(model_probability, accuracy = .1),
+        `Piyasa / başabaş` = scales::percent(market_probability, accuracy = .1),
+        `Fark` = scales::percent(edge, accuracy = .1),
+        `Beklenen değer` = scales::percent(expected_return, accuracy = .1),
+        Sinyal = signal,
+        Risk = risk
+      )
+  }
+
+  output$odds_top_table <- renderTable({
+    comparison <- odds_comparison()
+    validate(need(nrow(comparison) > 0, "Bu maç için oran verisi yok."))
+    format_odds_table(top_odds_options(comparison, 8L))
+  }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
+
+  output$odds_all_table <- renderTable({
+    comparison <- odds_comparison()
+    validate(need(nrow(comparison) > 0, "Bu maç için oran verisi yok."))
+    comparison |>
+      dplyr::arrange(factor(market_id, levels = unique(market_id)), dplyr::desc(decision_score)) |>
+      format_odds_table()
+  }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
+
+  output$odds_quality_note <- renderUI({
+    comparison <- odds_comparison()
+    if (nrow(comparison) == 0) return(NULL)
+    result_margin <- unique(comparison$market_margin[comparison$market_id == "result"])[[1]]
+    div(
+      class = "panel caveat-panel odds-quality",
+      strong("Kalite ve güvenlik notu:"),
+      paste0(" 1X2 ham olasılıklarının toplamı %", round((1 + result_margin) * 100, 1),
+             "; tabloda karşılaştırma için marj temizlenmiştir. Çifte şans ve golcü seçenekleri birbiriyle örtüştüğü için normalize edilmez, yalnızca başabaş olasılığı kullanılır. "),
+      "Korner ve kart bahisleri için kalibre edilmiş olay modeli olmadığı için pastedeki oranlara sahte olasılık eklenmedi. Bu ekran finansal tavsiye değildir."
+    )
+  })
 
   output$tactical_notes <- renderUI({
     div(class = "insight-list", lapply(prediction()$tactical_notes, function(note) div(class = "insight-item", span(class = "insight-dot"), p(note))))

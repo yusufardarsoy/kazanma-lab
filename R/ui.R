@@ -49,13 +49,21 @@ dashboard_ui <- function(config) {
         div(class = "sidebar-label", "ÇALIŞMA ALANI"),
         radioButtons(
           "section", NULL,
-          choiceNames = c("Maç merkezi", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası"),
-          choiceValues = c("overview", "lineups", "styles", "teams", "players", "memory"),
+          choiceNames = c("Maç merkezi", "Oran radarı", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası"),
+          choiceValues = c("overview", "odds", "lineups", "styles", "teams", "players", "memory"),
           selected = "overview"
         ),
         div(class = "sidebar-divider"),
-        div(class = "sidebar-label", "VERİ KAYNAĞI"),
-        selectInput("fixture_id", NULL, choices = super_lig_fixture_choices()),
+        div(class = "sidebar-label", "FİKSTÜR ARAMA"),
+        selectInput(
+          "team_filter", "Takım",
+          choices = c("Tüm takımlar" = "", stats::setNames(super_lig_teams()$team, super_lig_teams()$team))
+        ),
+        selectizeInput(
+          "fixture_id", "Maç",
+          choices = super_lig_fixture_choices(),
+          options = list(placeholder = "Takım veya maç ara", maxOptions = 306)
+        ),
         actionButton("run_analysis", "Tahmini kaydet", class = "btn-primary btn-block"),
         if (api_football_enabled(config)) {
           tagList(
@@ -66,7 +74,7 @@ dashboard_ui <- function(config) {
           div(
             class = "source-note",
             strong("Ücretsiz Süper Lig ön-modeli"),
-            span("TFF fikstürü ve 2025-26 performansı kullanılıyor. Güncel resmi kadro akışı olmadığı için oyuncu ekranı rol bazlıdır.")
+            span("34 haftalık TFF fikstürü ve 2025-26 performansı kullanılıyor. Kocaelispor–Amed maçında güncel muhtemel 11; diğer maçlarda güncellenene kadar rol bazlı adaylar gösterilir.")
           )
         },
         div(class = "sidebar-divider"),
@@ -84,6 +92,7 @@ overview_ui <- function() {
   tagList(
     uiOutput("match_header"),
     uiOutput("hero_cards"),
+    uiOutput("overview_odds_teaser"),
     div(
       class = "two-column",
       div(class = "panel", plotOutput("outcome_plot", height = 340)),
@@ -105,6 +114,31 @@ overview_ui <- function() {
         uiOutput("model_note")
       )
     )
+  )
+}
+
+odds_ui <- function() {
+  tagList(
+    div(
+      class = "section-heading",
+      div(class = "eyebrow", "ODDS INTELLIGENCE"),
+      h1("Oran radarı"),
+      p("İddaa oranını model olasılığıyla karşılaştırır. Pozitif fark garanti veya kupon tavsiyesi değildir; veri ve model hatası her zaman mümkündür.")
+    ),
+    uiOutput("odds_empty_state"),
+    uiOutput("odds_summary_cards"),
+    div(
+      class = "two-column",
+      div(class = "panel", plotOutput("odds_plot", height = 430)),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "EN MANTIKLI SEÇENEKLER"),
+        h3("Fark ve risk birlikte sıralandı"),
+        tableOutput("odds_top_table")
+      )
+    ),
+    div(class = "panel odds-table-panel", h3("Tüm modellenen seçenekler"), tableOutput("odds_all_table")),
+    uiOutput("odds_quality_note")
   )
 }
 
@@ -169,7 +203,7 @@ memory_ui <- function() {
         class = "panel",
         h3("Gerçek sonucu gir"),
         p("Maç bittikten sonra skoru buradan kaydet. Sonuçtan sonra oluşturulan tahminler doğruluk hesabına alınmaz."),
-        selectInput("result_fixture_id", "Süper Lig maçı", choices = super_lig_fixture_choices()),
+        selectInput("result_fixture_id", "Süper Lig maçı", choices = super_lig_fixture_choices(scheduled_only = TRUE)),
         div(
           class = "result-input-row",
           numericInput("manual_home_goals", "Ev gol", value = 0, min = 0, max = 20, step = 1),
@@ -195,7 +229,7 @@ memory_ui <- function() {
       div(class = "roadmap-step", span("03"), div(strong("Kalibrasyon"), p("Brier ve log loss ile model hatası ölçülür."))),
       div(class = "roadmap-step", span("04"), div(strong("Yeniden eğitim"), p("Takım/oyuncu ağırlıkları zaman çürümesiyle güncellenir.")))
     )
-  
+  )
 }
 
 lineup_team_ui <- function(team, xi) {

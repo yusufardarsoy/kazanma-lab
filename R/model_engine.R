@@ -131,6 +131,8 @@ build_prediction <- function(data) {
   home <- data$teams |> dplyr::filter(team_id == fixture$home_team_id)
   away <- data$teams |> dplyr::filter(team_id == fixture$away_team_id)
   xg <- expected_goals(home, away)
+  xg[["home"]] <- clamp(xg[["home"]] + team_value(fixture, "home_xg_adjustment", 0), .30, 3.60)
+  xg[["away"]] <- clamp(xg[["away"]] + team_value(fixture, "away_xg_adjustment", 0), .25, 3.40)
   score_matrix <- score_probability_matrix(xg[["home"]], xg[["away"]])
   outcomes <- outcome_probabilities(score_matrix)
   likely_score <- most_likely_score(score_matrix)
@@ -160,8 +162,8 @@ build_prediction <- function(data) {
     player_markets = dplyr::bind_rows(home_markets, away_markets) |>
       dplyr::left_join(data$teams |> dplyr::select(team_id, team), by = "team_id"),
     styles = style_long(home, away),
-    tactical_notes = tactical_notes(home, away),
-    model_version = "superlig-poisson-prior-0.3",
+    tactical_notes = unique(c(tactical_notes(home, away), team_text(fixture, "adjustment_note", ""))) |> purrr::discard(~ !nzchar(.x)) |> utils::head(5L),
+    model_version = "superlig-poisson-prior-0.4",
     confidence = clamp(.34 + .34 * profile_confidence + min(.12, (data$learning_matches %||% 0L) * .006), .42, .80),
     learning_matches = data$learning_matches %||% 0L,
     generated_at = Sys.time(),

@@ -22,7 +22,7 @@ test_that("post-match upload validates its contract", {
   data <- read.csv(template, stringsAsFactors = FALSE)
   clean <- validate_postmatch_upload(data)
   expect_equal(nrow(clean), 1)
-  expect_equal(clean$fixture_id, "TFF-2026-W03-01")
+  expect_equal(clean$fixture_id, "317806")
 })
 
 test_that("post-match import rejects competitions outside the Super Lig catalog", {
@@ -41,7 +41,10 @@ test_that("Super Lig catalog is complete and exclusive", {
   expect_equal(nrow(teams), 18)
   expect_equal(dplyr::n_distinct(teams$team), 18)
   expect_true(all(fixtures$competition == SUPER_LIG_COMPETITION))
-  expect_equal(nrow(fixtures), 9)
+  expect_equal(nrow(fixtures), 306)
+  appearances <- c(fixtures$home_team_id, fixtures$away_team_id)
+  expect_true(all(table(appearances) == 34))
+  expect_equal(sort(unique(fixtures$round)), 1:34)
 })
 
 test_that("every scheduled Super Lig match produces a valid prediction", {
@@ -60,7 +63,7 @@ test_that("scorecard compares only a frozen prediction with its later result", {
   on.exit(unlink(db_path), add = TRUE)
   initialize_store(db_path)
 
-  prediction <- build_prediction(super_lig_match_data("TFF-2026-W03-04"))
+  prediction <- build_prediction(super_lig_match_data("317808"))
   record_analysis(prediction, db_path)
   predicted <- names(which.max(prediction$outcomes))
   score <- switch(predicted, home = c(1L, 0L), away = c(0L, 1L), draw = c(0L, 0L))
@@ -81,4 +84,37 @@ test_that("scorecard compares only a frozen prediction with its later result", {
   expect_equal(scorecard$value[scorecard$metric == "1X2 isabeti"], 1)
   expect_equal(nrow(comparison), 1)
   expect_equal(comparison$Doğru, "Evet")
+})
+
+test_that("Kocaelispor-Amed preview uses named probable lineups and match adjustments", {
+  prediction <- build_prediction(super_lig_match_data("317800"))
+  expect_equal(prediction$fixture$kickoff, as.POSIXct("2026-08-24 21:30:00", tz = "Europe/Istanbul"))
+  expect_equal(nrow(prediction$home_xi), 11)
+  expect_equal(nrow(prediction$away_xi), 11)
+  expect_false(prediction$lineup_role_based)
+  expect_true("Daniel Agyei" %in% prediction$home_xi$player)
+  expect_true("Gift Orban" %in% prediction$away_xi$player)
+  expect_lt(prediction$expected_goals[["home"]], prediction$expected_goals[["away"]])
+})
+
+test_that("odds comparison removes margin and flags stale scorer row", {
+  prediction <- build_prediction(super_lig_match_data("317800"))
+  comparison <- compare_odds(prediction)
+  expect_no_error(validate_odds_snapshot())
+  expect_true(all(comparison$model_probability[comparison$supported] >= 0))
+  expect_true(all(comparison$model_probability[comparison$supported] <= 1))
+
+  exhaustive <- comparison |>
+    dplyr::filter(exhaustive) |>
+    dplyr::group_by(market_id) |>
+    dplyr::summarise(probability_sum = sum(market_probability), .groups = "drop")
+  expect_equal(exhaustive$probability_sum, rep(1, nrow(exhaustive)), tolerance = 1e-8)
+
+  double_chance <- comparison |> dplyr::filter(market_id == "double_chance")
+  expect_equal(double_chance$market_probability, 1 / double_chance$odds)
+
+  petkovic <- comparison |> dplyr::filter(selection_id == "Bruno Petkovic")
+  expect_equal(nrow(petkovic), 1)
+  expect_false(petkovic$active)
+  expect_equal(petkovic$signal, "Kadro dışı / bayat oran")
 })

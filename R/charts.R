@@ -82,3 +82,32 @@ plot_player_probability <- function(prediction, market = c("scorer", "card"), n 
     theme_kazanma() +
     ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
 }
+
+plot_odds_comparison <- function(comparison) {
+  df <- comparison |>
+    dplyr::filter(
+      active,
+      supported,
+      market_id %in% c("result", "ou_2_5", "btts")
+    ) |>
+    dplyr::transmute(
+      option = paste(market, selection, sep = " · "),
+      `Model` = model_probability,
+      `Marjsız piyasa` = market_probability
+    ) |>
+    tidyr::pivot_longer(c("Model", "Marjsız piyasa"), names_to = "source", values_to = "probability") |>
+    dplyr::mutate(option = stats::reorder(option, probability))
+
+  ggplot2::ggplot(df, ggplot2::aes(probability, option, colour = source)) +
+    ggplot2::geom_line(ggplot2::aes(group = option), colour = "#33423A", linewidth = 1) +
+    ggplot2::geom_point(size = 3.3) +
+    ggplot2::scale_colour_manual(values = c("Model" = "#D7A84B", "Marjsız piyasa" = "#63B4A5")) +
+    ggplot2::scale_x_continuous(labels = scales::percent, limits = c(0, max(df$probability) * 1.14)) +
+    ggplot2::labs(
+      title = "Model — piyasa farkı",
+      subtitle = "1X2, 2,5 gol ve karşılıklı gol; bahis marjı temizlenmiştir",
+      x = "Olasılık", y = NULL
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
+}

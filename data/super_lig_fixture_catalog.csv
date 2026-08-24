@@ -1,0 +1,307 @@
+fixture_id,round,home_team,away_team
+317790,1,Galatasaray,Çorum FK
+317789,1,Konyaspor,Çaykur Rizespor
+317784,1,Gaziantep FK,Alanyaspor
+317788,1,Gençlerbirliği,Fenerbahçe
+317785,1,Kasımpaşa,Trabzonspor
+317791,1,Beşiktaş,Eyüpspor
+317787,1,Amed SK,Erzurumspor
+317786,1,İstanbul Başakşehir,Kocaelispor
+317792,1,Samsunspor,Göztepe
+317801,2,Erzurumspor,Galatasaray
+317796,2,Çaykur Rizespor,Samsunspor
+317799,2,Fenerbahçe,Konyaspor
+317798,2,Çorum FK,Kasımpaşa
+317794,2,Eyüpspor,Gaziantep FK
+317797,2,Göztepe,Gençlerbirliği
+317795,2,Alanyaspor,Beşiktaş
+317793,2,Trabzonspor,İstanbul Başakşehir
+317800,2,Kocaelispor,Amed SK
+317806,3,Gençlerbirliği,Erzurumspor
+317802,3,Gaziantep FK,Çaykur Rizespor
+317808,3,Galatasaray,Göztepe
+317807,3,Konyaspor,Kocaelispor
+317803,3,Eyüpspor,Alanyaspor
+317804,3,İstanbul Başakşehir,Kasımpaşa
+317810,3,Samsunspor,Fenerbahçe
+317805,3,Amed SK,Trabzonspor
+317809,3,Beşiktaş,Çorum FK
+317816,4,Çorum FK,Eyüpspor
+317811,4,Trabzonspor,Gençlerbirliği
+317813,4,İstanbul Başakşehir,Galatasaray
+317819,4,Erzurumspor,Konyaspor
+317818,4,Kocaelispor,Samsunspor
+317817,4,Fenerbahçe,Beşiktaş
+317812,4,Kasımpaşa,Amed SK
+317815,4,Göztepe,Gaziantep FK
+317814,4,Çaykur Rizespor,Alanyaspor
+317826,5,Galatasaray,Kocaelispor
+317824,5,Gençlerbirliği,Kasımpaşa
+317822,5,Alanyaspor,Göztepe
+317821,5,Eyüpspor,Çaykur Rizespor
+317823,5,Amed SK,İstanbul Başakşehir
+317828,5,Samsunspor,Çorum FK
+317827,5,Beşiktaş,Erzurumspor
+317820,5,Gaziantep FK,Fenerbahçe
+317825,5,Konyaspor,Trabzonspor
+317837,6,Erzurumspor,Samsunspor
+317832,6,Amed SK,Beşiktaş
+317830,6,Kasımpaşa,Konyaspor
+317829,6,Trabzonspor,Galatasaray
+317835,6,Fenerbahçe,Eyüpspor
+317831,6,İstanbul Başakşehir,Gençlerbirliği
+317833,6,Göztepe,Çaykur Rizespor
+317836,6,Kocaelispor,Gaziantep FK
+317834,6,Çorum FK,Alanyaspor
+317845,7,Beşiktaş,Kocaelispor
+317842,7,Gençlerbirliği,Amed SK
+317839,7,Eyüpspor,Göztepe
+317844,7,Galatasaray,Kasımpaşa
+317843,7,Konyaspor,İstanbul Başakşehir
+317840,7,Alanyaspor,Erzurumspor
+317838,7,Gaziantep FK,Çorum FK
+317841,7,Çaykur Rizespor,Fenerbahçe
+317846,7,Samsunspor,Trabzonspor
+317848,8,Kasımpaşa,Samsunspor
+317847,8,Trabzonspor,Beşiktaş
+317855,8,Erzurumspor,Eyüpspor
+317851,8,Gençlerbirliği,Galatasaray
+317850,8,Amed SK,Konyaspor
+317852,8,Çorum FK,Çaykur Rizespor
+317854,8,Kocaelispor,Göztepe
+317853,8,Fenerbahçe,Alanyaspor
+317849,8,İstanbul Başakşehir,Gaziantep FK
+317864,9,Samsunspor,Amed SK
+317857,9,Eyüpspor,Kasımpaşa
+317863,9,Beşiktaş,İstanbul Başakşehir
+317856,9,Gaziantep FK,Erzurumspor
+317860,9,Göztepe,Çorum FK
+317861,9,Konyaspor,Gençlerbirliği
+317862,9,Galatasaray,Fenerbahçe
+317859,9,Çaykur Rizespor,Trabzonspor
+317858,9,Alanyaspor,Kocaelispor
+317869,10,Gençlerbirliği,Alanyaspor
+317867,10,İstanbul Başakşehir,Samsunspor
+317866,10,Kasımpaşa,Beşiktaş
+317868,10,Amed SK,Eyüpspor
+317870,10,Konyaspor,Galatasaray
+317873,10,Erzurumspor,Çorum FK
+317872,10,Kocaelispor,Çaykur Rizespor
+317865,10,Trabzonspor,Gaziantep FK
+317871,10,Fenerbahçe,Göztepe
+317880,11,Galatasaray,Amed SK
+317874,11,Gaziantep FK,Kasımpaşa
+317878,11,Göztepe,İstanbul Başakşehir
+317877,11,Çaykur Rizespor,Erzurumspor
+317881,11,Beşiktaş,Gençlerbirliği
+317882,11,Samsunspor,Konyaspor
+317879,11,Çorum FK,Fenerbahçe
+317876,11,Alanyaspor,Trabzonspor
+317875,11,Eyüpspor,Kocaelispor
+317889,12,Galatasaray,Samsunspor
+317890,12,Kocaelispor,Fenerbahçe
+317888,12,Konyaspor,Beşiktaş
+317883,12,Trabzonspor,Eyüpspor
+317885,12,İstanbul Başakşehir,Çorum FK
+317886,12,Amed SK,Çaykur Rizespor
+317891,12,Erzurumspor,Göztepe
+317884,12,Kasımpaşa,Alanyaspor
+317887,12,Gençlerbirliği,Gaziantep FK
+317892,13,Gaziantep FK,Amed SK
+317895,13,Çaykur Rizespor,Kasımpaşa
+317893,13,Eyüpspor,İstanbul Başakşehir
+317898,13,Fenerbahçe,Erzurumspor
+317900,13,Samsunspor,Gençlerbirliği
+317894,13,Alanyaspor,Konyaspor
+317899,13,Beşiktaş,Galatasaray
+317896,13,Göztepe,Trabzonspor
+317897,13,Çorum FK,Kocaelispor
+317909,14,Erzurumspor,Kocaelispor
+317908,14,Beşiktaş,Samsunspor
+317903,14,İstanbul Başakşehir,Fenerbahçe
+317905,14,Gençlerbirliği,Eyüpspor
+317901,14,Trabzonspor,Çorum FK
+317906,14,Konyaspor,Gaziantep FK
+317907,14,Galatasaray,Çaykur Rizespor
+317904,14,Amed SK,Alanyaspor
+317902,14,Kasımpaşa,Göztepe
+317918,15,Erzurumspor,Kasımpaşa
+317915,15,Çorum FK,Amed SK
+317913,15,Çaykur Rizespor,İstanbul Başakşehir
+317917,15,Kocaelispor,Gençlerbirliği
+317914,15,Göztepe,Konyaspor
+317911,15,Eyüpspor,Galatasaray
+317910,15,Gaziantep FK,Beşiktaş
+317916,15,Fenerbahçe,Trabzonspor
+317912,15,Alanyaspor,Samsunspor
+317920,16,Kasımpaşa,Fenerbahçe
+317924,16,Konyaspor,Eyüpspor
+317927,16,Samsunspor,Gaziantep FK
+317923,16,Gençlerbirliği,Çorum FK
+317921,16,İstanbul Başakşehir,Erzurumspor
+317926,16,Beşiktaş,Çaykur Rizespor
+317922,16,Amed SK,Göztepe
+317925,16,Galatasaray,Alanyaspor
+317919,16,Trabzonspor,Kocaelispor
+317934,17,Fenerbahçe,Amed SK
+317935,17,Kocaelispor,Kasımpaşa
+317930,17,Alanyaspor,İstanbul Başakşehir
+317931,17,Çaykur Rizespor,Gençlerbirliği
+317928,17,Gaziantep FK,Galatasaray
+317933,17,Çorum FK,Konyaspor
+317932,17,Göztepe,Beşiktaş
+317936,17,Erzurumspor,Trabzonspor
+317929,17,Eyüpspor,Samsunspor
+317945,18,Göztepe,Samsunspor
+317944,18,Eyüpspor,Beşiktaş
+317941,18,Fenerbahçe,Gençlerbirliği
+317943,18,Çorum FK,Galatasaray
+317942,18,Çaykur Rizespor,Konyaspor
+317939,18,Kocaelispor,İstanbul Başakşehir
+317938,18,Trabzonspor,Kasımpaşa
+317937,18,Alanyaspor,Gaziantep FK
+317940,18,Erzurumspor,Amed SK
+317950,19,Gençlerbirliği,Göztepe
+317948,19,Beşiktaş,Alanyaspor
+317949,19,Samsunspor,Çaykur Rizespor
+317954,19,Galatasaray,Erzurumspor
+317951,19,Kasımpaşa,Çorum FK
+317947,19,Gaziantep FK,Eyüpspor
+317952,19,Konyaspor,Fenerbahçe
+317946,19,İstanbul Başakşehir,Trabzonspor
+317953,19,Amed SK,Kocaelispor
+317963,20,Fenerbahçe,Samsunspor
+317962,20,Çorum FK,Beşiktaş
+317956,20,Alanyaspor,Eyüpspor
+317959,20,Erzurumspor,Gençlerbirliği
+317960,20,Kocaelispor,Konyaspor
+317961,20,Göztepe,Galatasaray
+317957,20,Kasımpaşa,İstanbul Başakşehir
+317955,20,Çaykur Rizespor,Gaziantep FK
+317958,20,Trabzonspor,Amed SK
+317968,21,Gaziantep FK,Göztepe
+317965,21,Amed SK,Kasımpaşa
+317966,21,Galatasaray,İstanbul Başakşehir
+317967,21,Alanyaspor,Çaykur Rizespor
+317969,21,Eyüpspor,Çorum FK
+317972,21,Konyaspor,Erzurumspor
+317970,21,Beşiktaş,Fenerbahçe
+317964,21,Gençlerbirliği,Trabzonspor
+317971,21,Samsunspor,Kocaelispor
+317981,22,Çorum FK,Samsunspor
+317978,22,Trabzonspor,Konyaspor
+317980,22,Erzurumspor,Beşiktaş
+317977,22,Kasımpaşa,Gençlerbirliği
+317979,22,Kocaelispor,Galatasaray
+317974,22,Çaykur Rizespor,Eyüpspor
+317973,22,Fenerbahçe,Gaziantep FK
+317975,22,Göztepe,Alanyaspor
+317976,22,İstanbul Başakşehir,Amed SK
+317985,23,Beşiktaş,Amed SK
+317983,23,Konyaspor,Kasımpaşa
+317986,23,Çaykur Rizespor,Göztepe
+317984,23,Gençlerbirliği,İstanbul Başakşehir
+317990,23,Samsunspor,Erzurumspor
+317987,23,Alanyaspor,Çorum FK
+317988,23,Eyüpspor,Fenerbahçe
+317982,23,Galatasaray,Trabzonspor
+317989,23,Gaziantep FK,Kocaelispor
+317993,24,Erzurumspor,Alanyaspor
+317999,24,Trabzonspor,Samsunspor
+317998,24,Kocaelispor,Beşiktaş
+317992,24,Göztepe,Eyüpspor
+317995,24,Amed SK,Gençlerbirliği
+317997,24,Kasımpaşa,Galatasaray
+317996,24,İstanbul Başakşehir,Konyaspor
+317994,24,Fenerbahçe,Çaykur Rizespor
+317991,24,Çorum FK,Gaziantep FK
+318003,25,Konyaspor,Amed SK
+318001,25,Samsunspor,Kasımpaşa
+318008,25,Eyüpspor,Erzurumspor
+318005,25,Çaykur Rizespor,Çorum FK
+318002,25,Gaziantep FK,İstanbul Başakşehir
+318004,25,Galatasaray,Gençlerbirliği
+318000,25,Beşiktaş,Trabzonspor
+318006,25,Alanyaspor,Fenerbahçe
+318007,25,Göztepe,Kocaelispor
+318016,26,İstanbul Başakşehir,Beşiktaş
+318017,26,Amed SK,Samsunspor
+318010,26,Kasımpaşa,Eyüpspor
+318015,26,Fenerbahçe,Galatasaray
+318014,26,Gençlerbirliği,Konyaspor
+318012,26,Trabzonspor,Çaykur Rizespor
+318013,26,Çorum FK,Göztepe
+318011,26,Kocaelispor,Alanyaspor
+318009,26,Erzurumspor,Gaziantep FK
+318021,27,Eyüpspor,Amed SK
+318019,27,Beşiktaş,Kasımpaşa
+318026,27,Çorum FK,Erzurumspor
+318020,27,Samsunspor,İstanbul Başakşehir
+318023,27,Galatasaray,Konyaspor
+318022,27,Alanyaspor,Gençlerbirliği
+318018,27,Gaziantep FK,Trabzonspor
+318024,27,Göztepe,Fenerbahçe
+318025,27,Çaykur Rizespor,Kocaelispor
+318035,28,Konyaspor,Samsunspor
+318034,28,Gençlerbirliği,Beşiktaş
+318028,28,Kocaelispor,Eyüpspor
+318032,28,Fenerbahçe,Çorum FK
+318033,28,Amed SK,Galatasaray
+318030,28,Erzurumspor,Çaykur Rizespor
+318031,28,İstanbul Başakşehir,Göztepe
+318029,28,Trabzonspor,Alanyaspor
+318027,28,Kasımpaşa,Gaziantep FK
+318039,29,Çaykur Rizespor,Amed SK
+318037,29,Alanyaspor,Kasımpaşa
+318038,29,Çorum FK,İstanbul Başakşehir
+318044,29,Göztepe,Erzurumspor
+318042,29,Samsunspor,Galatasaray
+318041,29,Beşiktaş,Konyaspor
+318040,29,Gaziantep FK,Gençlerbirliği
+318036,29,Eyüpspor,Trabzonspor
+318043,29,Fenerbahçe,Kocaelispor
+318053,30,Gençlerbirliği,Samsunspor
+318052,30,Galatasaray,Beşiktaş
+318051,30,Erzurumspor,Fenerbahçe
+318046,30,İstanbul Başakşehir,Eyüpspor
+318050,30,Kocaelispor,Çorum FK
+318048,30,Kasımpaşa,Çaykur Rizespor
+318047,30,Konyaspor,Alanyaspor
+318049,30,Trabzonspor,Göztepe
+318045,30,Amed SK,Gaziantep FK
+318057,31,Alanyaspor,Amed SK
+318055,31,Göztepe,Kasımpaşa
+318056,31,Fenerbahçe,İstanbul Başakşehir
+318062,31,Kocaelispor,Erzurumspor
+318058,31,Eyüpspor,Gençlerbirliği
+318059,31,Gaziantep FK,Konyaspor
+318060,31,Çaykur Rizespor,Galatasaray
+318061,31,Samsunspor,Beşiktaş
+318054,31,Çorum FK,Trabzonspor
+318069,32,Trabzonspor,Fenerbahçe
+318064,32,Galatasaray,Eyüpspor
+318071,32,Kasımpaşa,Erzurumspor
+318068,32,Amed SK,Çorum FK
+318066,32,İstanbul Başakşehir,Çaykur Rizespor
+318063,32,Beşiktaş,Gaziantep FK
+318065,32,Samsunspor,Alanyaspor
+318067,32,Konyaspor,Göztepe
+318070,32,Gençlerbirliği,Kocaelispor
+318075,33,Göztepe,Amed SK
+318073,33,Fenerbahçe,Kasımpaşa
+318074,33,Erzurumspor,İstanbul Başakşehir
+318076,33,Çorum FK,Gençlerbirliği
+318078,33,Alanyaspor,Galatasaray
+318077,33,Eyüpspor,Konyaspor
+318079,33,Çaykur Rizespor,Beşiktaş
+318072,33,Kocaelispor,Trabzonspor
+318080,33,Gaziantep FK,Samsunspor
+318087,34,Amed SK,Fenerbahçe
+318082,34,Samsunspor,Eyüpspor
+318081,34,Galatasaray,Gaziantep FK
+318084,34,Gençlerbirliği,Çaykur Rizespor
+318086,34,Konyaspor,Çorum FK
+318089,34,Trabzonspor,Erzurumspor
+318085,34,Beşiktaş,Göztepe
+318088,34,Kasımpaşa,Kocaelispor
+318083,34,İstanbul Başakşehir,Alanyaspor

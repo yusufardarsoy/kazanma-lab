@@ -1,5 +1,13 @@
 SUPER_LIG_COMPETITION <- "Trendyol Süper Lig 2026-2027"
 SUPER_LIG_PROFILE_DATE <- as.Date("2026-08-24")
+SUPER_LIG_PROJECT_ROOT <- local({
+  source_file <- tryCatch(sys.frame(1)$ofile, error = function(e) NULL)
+  if (!is.null(source_file) && nzchar(source_file)) {
+    normalizePath(file.path(dirname(source_file), ".."), winslash = "/", mustWork = FALSE)
+  } else {
+    normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  }
+})
 
 super_lig_teams <- function() {
   # 2025-26 sonuçları TFF'nin resmi final tablosundan; piyasa değerleri
@@ -37,18 +45,40 @@ super_lig_teams <- function() {
 
 super_lig_fixtures <- function() {
   teams <- super_lig_teams() |> dplyr::select(team_id, team)
-  raw <- tibble::tribble(
-    ~fixture_id, ~round, ~kickoff_text, ~home_team, ~away_team, ~venue,
-    "TFF-2026-W03-01", 3L, "2026-08-28 21:30:00", "Gençlerbirliği", "Erzurumspor", "Eryaman Stadyumu",
-    "TFF-2026-W03-02", 3L, "2026-08-29 19:00:00", "Konyaspor", "Kocaelispor", "Konya Büyükşehir Stadyumu",
-    "TFF-2026-W03-03", 3L, "2026-08-29 21:30:00", "Gaziantep FK", "Çaykur Rizespor", "Gaziantep Stadyumu",
-    "TFF-2026-W03-04", 3L, "2026-08-29 21:30:00", "Galatasaray", "Göztepe", "RAMS Park",
-    "TFF-2026-W03-05", 3L, "2026-08-30 19:00:00", "Eyüpspor", "Alanyaspor", "Esenyurt Necmi Kadıoğlu Stadyumu",
-    "TFF-2026-W03-06", 3L, "2026-08-30 21:30:00", "İstanbul Başakşehir", "Kasımpaşa", "Başakşehir Fatih Terim Stadyumu",
-    "TFF-2026-W03-07", 3L, "2026-08-30 21:30:00", "Samsunspor", "Fenerbahçe", "Samsun Yeni 19 Mayıs Stadyumu",
-    "TFF-2026-W03-08", 3L, "2026-08-31 21:30:00", "Amed SK", "Trabzonspor", "Diyarbakır Stadyumu",
-    "TFF-2026-W03-09", 3L, "2026-08-31 21:30:00", "Beşiktaş", "Çorum FK", "Tüpraş Stadyumu"
+  raw <- utils::read.csv(
+    file.path(SUPER_LIG_PROJECT_ROOT, "data", "super_lig_fixture_catalog.csv"),
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    fileEncoding = "UTF-8"
+  ) |>
+    tibble::as_tibble() |>
+    dplyr::mutate(fixture_id = as.character(fixture_id), round = as.integer(round))
+
+  schedule <- tibble::tribble(
+    ~fixture_id, ~kickoff_text, ~venue,
+    "317800", "2026-08-24 21:30:00", "Kocaeli Stadyumu",
+    "317806", "2026-08-28 21:30:00", "Eryaman Stadyumu",
+    "317807", "2026-08-29 19:00:00", "Konya Büyükşehir Stadyumu",
+    "317802", "2026-08-29 21:30:00", "Gaziantep Stadyumu",
+    "317808", "2026-08-29 21:30:00", "RAMS Park",
+    "317803", "2026-08-30 19:00:00", "Esenyurt Necmi Kadıoğlu Stadyumu",
+    "317804", "2026-08-30 21:30:00", "Başakşehir Fatih Terim Stadyumu",
+    "317810", "2026-08-30 21:30:00", "Samsun Yeni 19 Mayıs Stadyumu",
+    "317805", "2026-08-31 21:30:00", "Diyarbakır Stadyumu",
+    "317809", "2026-08-31 21:30:00", "Tüpraş Stadyumu"
   )
+
+  raw <- raw |>
+    dplyr::left_join(schedule, by = "fixture_id") |>
+    dplyr::mutate(
+      home_xg_adjustment = dplyr::if_else(fixture_id == "317800", -0.10, 0),
+      away_xg_adjustment = dplyr::if_else(fixture_id == "317800", 0.08, 0),
+      adjustment_note = dplyr::if_else(
+        fixture_id == "317800",
+        "Petković, Jovanović ve Panzo yok; Amed'in 3-0 açılışı düşük örneklem ağırlığıyla işlendi.",
+        "Maça özel doğrulanmış eksik/form düzeltmesi henüz yok."
+      )
+    )
 
   home_ids <- teams |> dplyr::rename(home_team = team, home_team_id = team_id)
   away_ids <- teams |> dplyr::rename(away_team = team, away_team_id = team_id)
@@ -63,9 +93,14 @@ super_lig_fixtures <- function() {
       home_team_id,
       away_team_id,
       venue,
+      scheduled = !is.na(kickoff),
+      home_xg_adjustment,
+      away_xg_adjustment,
+      adjustment_note,
       data_mode = "curated_prior",
       fixture_source = "TFF"
-    )
+    ) |>
+    dplyr::arrange(dplyr::desc(fixture_id == "317800"), round, kickoff, fixture_id)
 }
 
 role_squad_template <- function() {
@@ -104,6 +139,34 @@ super_lig_role_players <- function(teams = super_lig_teams()) {
       ) |>
       dplyr::select(player_id, team_id, player, position, role, start_score, minutes_share, goals_p90, cards_p90, form, fitness, identity_status)
   })
+}
+
+kocaeli_amed_probable_players <- function() {
+  tibble::tribble(
+    ~player_id, ~team_id, ~player, ~position, ~role, ~start_score, ~minutes_share, ~goals_p90, ~cards_p90, ~form, ~fitness, ~identity_status,
+    17001L, 17L, "Serhat Öztaşdelen", "GK", "Kaleci", .98, .98, .00, .03, 66, 95, "named_probable",
+    17002L, 17L, "Tanguy Zoukrou", "DEF", "Sağ bek", .93, .90, .03, .29, 67, 94, "named_probable",
+    17003L, 17L, "Anfernee Dijksteel", "DEF", "Stoper", .95, .93, .03, .24, 69, 95, "named_probable",
+    17004L, 17L, "Uğur Kaan Yıldız", "DEF", "Stoper", .95, .94, .04, .33, 68, 96, "named_probable",
+    17005L, 17L, "Massadio Haïdara", "DEF", "Sol bek", .94, .91, .04, .25, 67, 94, "named_probable",
+    17006L, 17L, "Show", "MID", "Top kazanan orta saha", .94, .92, .07, .38, 68, 95, "named_probable",
+    17007L, 17L, "Mahamadou Susoho", "MID", "Merkez orta saha", .89, .80, .10, .27, 67, 89, "named_probable",
+    17008L, 17L, "Tayfur Bingöl", "MID", "Hücum bağlantısı", .92, .86, .15, .31, 68, 93, "named_probable",
+    17009L, 17L, "Makana Baku", "FWD", "Sağ kanat", .94, .86, .28, .17, 69, 94, "named_probable",
+    17010L, 17L, "Daniel Agyei", "FWD", "Santrfor", .95, .88, .42, .20, 70, 95, "named_probable",
+    17011L, 17L, "Metehan Altunbaş", "FWD", "Sol hücumcu", .91, .81, .36, .16, 68, 94, "named_probable",
+    14001L, 14L, "Alban Lafont", "GK", "Kaleci", .98, .98, .00, .02, 76, 97, "named_probable",
+    14002L, 14L, "Mehmet Yeşil", "DEF", "Sağ stoper", .94, .92, .04, .31, 75, 96, "named_probable",
+    14003L, 14L, "David Bates", "DEF", "Stoper", .95, .94, .05, .30, 76, 96, "named_probable",
+    14004L, 14L, "Lumbardh Dellova", "DEF", "Sol stoper", .95, .94, .05, .33, 76, 96, "named_probable",
+    14005L, 14L, "Ermal Krasniqi", "DEF", "Kanat bek", .93, .89, .20, .18, 78, 95, "named_probable",
+    14006L, 14L, "Rayan Raveloson", "MID", "Top kazanan orta saha", .95, .93, .10, .35, 77, 96, "named_probable",
+    14007L, 14L, "Cem Üstündağ", "MID", "Merkez orta saha", .93, .89, .11, .36, 76, 95, "named_probable",
+    14008L, 14L, "Dia Saba", "MID", "Yaratıcı orta saha", .95, .90, .25, .16, 80, 96, "named_probable",
+    14009L, 14L, "Yira Sor", "FWD", "Sağ hücumcu", .94, .86, .32, .12, 79, 95, "named_probable",
+    14010L, 14L, "Gift Orban", "FWD", "Hareketli forvet", .96, .90, .54, .17, 82, 96, "named_probable",
+    14011L, 14L, "Mbaye Diagne", "FWD", "Santrfor", .95, .88, .60, .28, 81, 95, "named_probable"
+  )
 }
 
 validate_super_lig_catalog <- function(teams = super_lig_teams(), fixtures = super_lig_fixtures()) {
@@ -152,22 +215,42 @@ super_lig_match_data <- function(fixture_id = NULL) {
   if (is.null(fixture_id) || !nzchar(fixture_id)) fixture_id <- fixtures$fixture_id[[1]]
   fixture <- fixtures |> dplyr::filter(.data$fixture_id == !!fixture_id)
   if (nrow(fixture) != 1L) stop("Seçilen maç 2026-27 Süper Lig fikstüründe bulunamadı.")
+  players <- super_lig_role_players(teams)
+  if (identical(fixture_id, "317800")) {
+    teams <- teams |>
+      dplyr::mutate(
+        lineup_status = dplyr::if_else(team_id %in% c(14L, 17L), "Maç önü muhtemel 11", lineup_status),
+        formation = dplyr::case_when(team_id == 14L ~ "3-4-3", TRUE ~ formation)
+      )
+    players <- players |>
+      dplyr::filter(!team_id %in% c(14L, 17L)) |>
+      dplyr::bind_rows(kocaeli_amed_probable_players())
+  }
   list(
     teams = teams,
-    players = super_lig_role_players(teams),
+    players = players,
     fixture = fixture,
     recent_matches = tibble::tibble(),
     learning_matches = 0L
   )
 }
 
-super_lig_fixture_choices <- function() {
+super_lig_fixture_choices <- function(team_filter = NULL, scheduled_only = FALSE) {
   fixtures <- super_lig_fixtures()
   teams <- super_lig_teams() |> dplyr::select(team_id, team)
   choices <- fixtures |>
     dplyr::left_join(teams |> dplyr::rename(home_team_id = team_id, home_team = team), by = "home_team_id") |>
-    dplyr::left_join(teams |> dplyr::rename(away_team_id = team_id, away_team = team), by = "away_team_id") |>
-    dplyr::mutate(label = paste0(round, ". hafta · ", format(kickoff, "%d.%m %H:%M"), " · ", home_team, " — ", away_team))
+    dplyr::left_join(teams |> dplyr::rename(away_team_id = team_id, away_team = team), by = "away_team_id")
+  if (!is.null(team_filter) && nzchar(team_filter)) {
+    team_id <- teams$team_id[match(team_filter, teams$team)]
+    choices <- choices |> dplyr::filter(home_team_id == team_id | away_team_id == team_id)
+  }
+  if (isTRUE(scheduled_only)) choices <- choices |> dplyr::filter(scheduled)
+  choices <- choices |>
+    dplyr::mutate(
+      date_label = dplyr::if_else(scheduled, format(kickoff, "%d.%m %H:%M"), "tarih bekleniyor"),
+      label = paste0(round, ". hafta · ", date_label, " · ", home_team, " — ", away_team)
+    )
   stats::setNames(choices$fixture_id, choices$label)
 }
 
