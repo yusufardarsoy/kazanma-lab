@@ -69,7 +69,7 @@ dashboard_ui <- function(config) {
         div(
           class = "source-note",
           strong("Anahtarsız temel akış"),
-          span("Football-Data.co.uk sonuç, yayınlanmış maç tarihi ve piyasa oranlarını ücretsiz eşitler. API anahtarları yalnızca daha hızlı sonuç ve kadro ayrıntısı ekler.")
+          span("Football-Data.co.uk arşiv sonuç ve oranlarını anahtarsız eşitler. Ücretsiz API-Football anahtarı güncel oran, fikstür, ilk 11 ve sakatlık verisini otomatik ekler.")
         ),
         div(class = "sidebar-divider"),
         uiOutput("freshness_ui")

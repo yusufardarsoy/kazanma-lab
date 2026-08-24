@@ -1,5 +1,7 @@
 api_football_enabled <- function(config) nzchar(config$football_api_key)
 
+API_FOOTBALL_SOURCE <- "API-Football"
+
 api_football_get <- function(config, endpoint, query = list()) {
   if (!api_football_enabled(config)) stop("FOOTBALL_API_KEY tanımlı değil.")
   request <- httr2::request(paste0(sub("/$", "", config$football_api_base), endpoint)) |>
@@ -173,6 +175,67 @@ parse_provider_absences <- function(raw, provider_fixture_id, fetched_at = Sys.t
     dplyr::distinct(provider_fixture_id, team_id, player_id, .keep_all = TRUE)
 }
 
+parse_api_football_odds <- function(raw, fixture_map, fetched_at = Sys.time(), source_url = "https://v3.football.api-sports.io/odds") {
+  if (length(raw) == 0 || nrow(fixture_map) == 0) return(tibble::tibble())
+  lookup <- fixture_map |>
+    dplyr::filter(!is.na(internal_fixture_id), nzchar(internal_fixture_id)) |>
+    dplyr::distinct(provider_fixture_id, internal_fixture_id)
+  fetched <- format(fetched_at, "%Y-%m-%dT%H:%M:%S%z")
+
+  rows <- purrr::map_dfr(raw, function(event) {
+    provider_id <- provider_chr(event$fixture$id)
+    internal_id <- lookup$internal_fixture_id[match(provider_id, lookup$provider_fixture_id)]
+    if (length(internal_id) == 0 || is.na(internal_id)) return(NULL)
+    snapshot <- provider_chr(event$update, fetched)
+    bookmakers <- event$bookmakers %||% list()
+    purrr::map_dfr(bookmakers, function(bookmaker) {
+      bookmaker_name <- provider_chr(bookmaker$name, "Bilinmeyen bahis şirketi")
+      purrr::map_dfr(bookmaker$bets %||% list(), function(bet) {
+        bet_key <- normalise_provider_name(provider_chr(bet$name))
+        purrr::map_dfr(bet$values %||% list(), function(value) {
+          label <- provider_chr(value$value, "")
+          label_key <- normalise_provider_name(label)
+          market <- selection <- NA_character_
+          if (bet_key %in% c("matchwinner", "1x2", "winner")) {
+            market <- "result"
+            selection <- dplyr::case_when(
+              label_key %in% c("home", "1") ~ "home",
+              label_key %in% c("draw", "x") ~ "draw",
+              label_key %in% c("away", "2") ~ "away",
+              TRUE ~ NA_character_
+            )
+          } else if (bet_key %in% c("goalsoverunder", "overunder", "totalgoals")) {
+            total <- stringr::str_extract(label, "[0-9]+(?:[\\.,][0-9]+)?")
+            if (!is.na(total) && identical(gsub(",", ".", total), "2.5")) {
+              market <- "ou_2_5"
+              selection <- dplyr::case_when(
+                grepl("^over", label_key) ~ "over",
+                grepl("^under", label_key) ~ "under",
+                TRUE ~ NA_character_
+              )
+            }
+          }
+          odd <- provider_num(value$odd)
+          if (is.na(market) || is.na(selection) || !is.finite(odd) || odd <= 1) return(NULL)
+          tibble::tibble(
+            source = API_FOOTBALL_SOURCE,
+            source_url = source_url,
+            fixture_id = internal_id,
+            market_id = market,
+            selection_id = selection,
+            bookmaker = bookmaker_name,
+            odds = odd,
+            snapshot_kind = "upcoming",
+            snapshot_at = snapshot,
+            fetched_at = fetched
+          )
+        })
+      })
+    })
+  })
+  rows |> dplyr::distinct(source, fixture_id, market_id, selection_id, bookmaker, snapshot_kind, snapshot_at, .keep_all = TRUE)
+}
+
 write_provider_schedule_cache <- function(rows, config) {
   mapped <- rows |>
     dplyr::filter(!is.na(internal_fixture_id), nzchar(internal_fixture_id)) |>
@@ -305,15 +368,17 @@ apply_provider_context <- function(data, db_path) {
 }
 
 parse_provider_coverage <- function(raw, season) {
-  if (length(raw) == 0) return(list(injuries = FALSE, lineups = FALSE, events = FALSE, statistics = FALSE, players = FALSE))
+  empty <- list(injuries = FALSE, lineups = FALSE, odds = FALSE, events = FALSE, statistics = FALSE, players = FALSE)
+  if (length(raw) == 0) return(empty)
   seasons <- raw[[1]]$seasons %||% list()
   selected <- purrr::keep(seasons, ~ provider_int(.x$year) == as.integer(season))
-  if (length(selected) == 0) return(list(injuries = FALSE, lineups = FALSE, events = FALSE, statistics = FALSE, players = FALSE))
+  if (length(selected) == 0) return(empty)
   coverage <- selected[[1]]$coverage %||% list()
   fixtures <- coverage$fixtures %||% list()
   list(
     injuries = isTRUE(coverage$injuries),
     lineups = isTRUE(fixtures$lineups),
+    odds = isTRUE(coverage$odds),
     events = isTRUE(fixtures$events),
     statistics = isTRUE(fixtures$statistics_fixtures),
     players = isTRUE(fixtures$statistics_players)
@@ -327,6 +392,7 @@ auto_sync_league <- function(config, now = Sys.time(), detail_budget = config$sy
   requests_used <- 0L
   seen <- 0L
   mapped_n <- 0L
+  odds_count <- 0L
   used_last_24h <- sync_requests_last_24h(config$db_path, now)
   if (used_last_24h >= 90L) {
     message <- "Ücretsiz günlük kota için güvenlik payı doldu; yeni çağrı yapılmadı."
@@ -364,6 +430,34 @@ auto_sync_league <- function(config, now = Sys.time(), detail_budget = config$sy
     upcoming <- mapped |>
       dplyr::mutate(kickoff_time = kickoff_time, hours_to_kickoff = as.numeric(difftime(kickoff_time, now, units = "hours"))) |>
       dplyr::filter(hours_to_kickoff >= -3, hours_to_kickoff <= 48)
+    # Resmî ilk 11 en zaman-kritik veri olduğundan önce alınır.
+    if (nrow(upcoming) > 0) for (i in seq_len(nrow(upcoming))) {
+      if (remaining <= 0) break
+      fixture <- upcoming[i, ]
+      provider_id <- fixture$provider_fixture_id[[1]]
+      if (coverage$lineups && fixture$hours_to_kickoff[[1]] <= 1.5 && stored_payload_is_stale(provider_id, "lineups", config$db_path, .4, now)) {
+        raw <- get_data("/fixtures/lineups", list(fixture = provider_id))
+        replace_provider_snapshot("provider_lineups", provider_id, parse_provider_lineups(raw, provider_id, now), config$db_path)
+        store_provider_payload(provider_id, "lineups", raw, config$db_path, now)
+        remaining <- remaining - 1L
+      }
+    }
+
+    # Bir tarih çağrısı o günkü tüm lig maçlarını kapsar; ücretsiz kotayı fixture başına harcamaz.
+    if (coverage$odds && nrow(upcoming) > 0 && remaining > 0) {
+      odds_dates <- unique(format(upcoming$kickoff_time, "%Y-%m-%d", tz = config$timezone))
+      for (match_date in odds_dates) {
+        if (remaining <= 0) break
+        payload_key <- paste0("league-", config$league_id, "-odds-", match_date)
+        if (!stored_payload_is_stale(payload_key, "odds", config$db_path, 3, now)) next
+        raw <- get_data("/odds", list(league = config$league_id, season = config$season, date = match_date, page = 1L))
+        parsed_odds <- parse_api_football_odds(raw, mapped, now)
+        if (nrow(parsed_odds) > 0) odds_count <- odds_count + store_odds_snapshots(parsed_odds, config$db_path)
+        store_provider_payload(payload_key, "odds", raw, config$db_path, now)
+        remaining <- remaining - 1L
+      }
+    }
+
     if (nrow(upcoming) > 0) for (i in seq_len(nrow(upcoming))) {
       if (remaining <= 0) break
       fixture <- upcoming[i, ]
@@ -372,13 +466,6 @@ auto_sync_league <- function(config, now = Sys.time(), detail_budget = config$sy
         raw <- get_data("/injuries", list(fixture = provider_id, timezone = config$timezone))
         replace_provider_snapshot("provider_absences", provider_id, parse_provider_absences(raw, provider_id, now), config$db_path)
         store_provider_payload(provider_id, "injuries", raw, config$db_path, now)
-        remaining <- remaining - 1L
-      }
-      if (remaining <= 0) break
-      if (coverage$lineups && fixture$hours_to_kickoff[[1]] <= 1.5 && stored_payload_is_stale(provider_id, "lineups", config$db_path, .4, now)) {
-        raw <- get_data("/fixtures/lineups", list(fixture = provider_id))
-        replace_provider_snapshot("provider_lineups", provider_id, parse_provider_lineups(raw, provider_id, now), config$db_path)
-        store_provider_payload(provider_id, "lineups", raw, config$db_path, now)
         remaining <- remaining - 1L
       }
     }
@@ -417,9 +504,9 @@ auto_sync_league <- function(config, now = Sys.time(), detail_budget = config$sy
         record_analysis(build_prediction(data), config$db_path)
       }
     }
-    message <- paste(mapped_n, "fikstür eşleşti;", nrow(results), "tamamlanmış sonuç hafızada.")
+    message <- paste(mapped_n, "fikstür eşleşti;", nrow(results), "tamamlanmış sonuç ve", odds_count, "oran satırı işlendi.")
     record_sync_run(config$db_path, started_at, "ok", requests_used, seen, mapped_n, message)
-    invisible(list(status = "ok", requests_used = requests_used, fixtures_seen = seen, fixtures_mapped = mapped_n, results = nrow(results)))
+    invisible(list(status = "ok", requests_used = requests_used, fixtures_seen = seen, fixtures_mapped = mapped_n, results = nrow(results), odds_rows = odds_count, message = message))
   }, error = function(e) {
     record_sync_run(config$db_path, started_at, "error", requests_used, seen, mapped_n, conditionMessage(e))
     stop(e)

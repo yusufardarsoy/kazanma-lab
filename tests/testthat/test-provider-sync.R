@@ -28,6 +28,24 @@ provider_lineup_sample <- function() {
   list(make_team("Kocaelispor", 1000L), make_team("Amedspor", 2000L))
 }
 
+provider_odds_sample <- function() {
+  list(list(
+    fixture = list(id = 990001L),
+    update = "2026-08-24T15:00:00+00:00",
+    bookmakers = list(list(
+      name = "Bet365",
+      bets = list(
+        list(name = "Match Winner", values = list(
+          list(value = "Home", odd = "1.97"), list(value = "Draw", odd = "3.05"), list(value = "Away", odd = "2.92")
+        )),
+        list(name = "Goals Over/Under", values = list(
+          list(value = "Over 2.5", odd = "1.88"), list(value = "Under 2.5", odd = "1.82")
+        ))
+      )
+    ))
+  ))
+}
+
 test_that("provider fixture maps to exactly one internal Super Lig fixture", {
   config <- read_app_config()
   parsed <- parse_provider_fixture_rows(provider_fixture_sample(), config, as.POSIXct("2026-08-24 12:00:00", tz = "Europe/Istanbul"))
@@ -41,6 +59,27 @@ test_that("official lineups are unique and contain eleven starters per team", {
   expect_equal(nrow(parsed), 22L)
   expect_equal(sort(as.integer(table(parsed$team_id))), c(11L, 11L))
   expect_false(anyDuplicated(parsed[c("provider_fixture_id", "team_id", "player_id", "is_starting")]) > 0)
+})
+
+test_that("API-Football odds map to the internal fixture and supported markets", {
+  config <- read_app_config()
+  fixture <- parse_provider_fixture_rows(provider_fixture_sample(), config)
+  parsed <- parse_api_football_odds(provider_odds_sample(), fixture)
+  expect_equal(nrow(parsed), 5L)
+  expect_true(all(parsed$fixture_id == "317800"))
+  expect_setequal(parsed$market_id, c("result", "ou_2_5"))
+  expect_setequal(parsed$selection_id, c("home", "draw", "away", "over", "under"))
+  expect_true(all(parsed$source == "API-Football"))
+})
+
+test_that("provider coverage includes pre-match odds", {
+  raw <- list(list(seasons = list(list(
+    year = 2026L,
+    coverage = list(injuries = TRUE, odds = TRUE, fixtures = list(lineups = TRUE))
+  ))))
+  coverage <- parse_provider_coverage(raw, 2026L)
+  expect_true(coverage$odds)
+  expect_true(coverage$lineups)
 })
 
 test_that("provider storage is idempotent and official lineups reach the model", {

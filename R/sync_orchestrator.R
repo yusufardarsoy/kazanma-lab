@@ -21,8 +21,8 @@ auto_sync_all_sources <- function(config, now = Sys.time(), force_public = FALSE
     run_safely("API-Football", function() {
       value <- auto_sync_league(config, now)
       value$source <- "API-Football"
-      value$odds_rows <- 0L
-      value$message <- paste0(value$fixtures_mapped, " fikstür eşleşti; ", value$results, " sonuç işlendi.")
+      value$odds_rows <- value$odds_rows %||% 0L
+      value$message <- value$message %||% paste0(value$fixtures_mapped, " fikstür eşleşti; ", value$results, " sonuç işlendi.")
       value
     })
   } else {
