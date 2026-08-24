@@ -1,9 +1,9 @@
 Package: kazanmalab
 Type: Project
 Title: Kazanma Lab Football Intelligence Dashboard
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Arda", role = c("aut", "cre"), email = "arda@example.invalid")
-Description: A private R Shiny dashboard for probable lineups, match outcome,
+Description: A private Turkish Super Lig R Shiny dashboard for probable lineups, match outcome,
     player scoring and card probabilities, tactical style comparison, and
     post-match model learning.
 License: MIT
@@ -25,4 +25,3 @@ Imports:
     tidyr
 Suggests:
     testthat
-

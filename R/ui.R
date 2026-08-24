@@ -26,7 +26,7 @@ metric_card <- function(label, value, detail, accent = "gold") {
 dashboard_ui <- function(config) {
   div(
     class = "app-page",
-    header(
+    tags$header(
       class = "topbar",
       div(
         class = "brand-lockup",
@@ -38,25 +38,25 @@ dashboard_ui <- function(config) {
       ),
       div(
         class = "topbar-actions",
-        status_badge(if (api_football_enabled(config)) "Canlı veri anahtarı hazır" else "Demo veri", if (api_football_enabled(config)) "live" else "demo"),
+        status_badge(if (api_football_enabled(config)) "Süper Lig + canlı bağlantı" else "Süper Lig ön-modeli", if (api_football_enabled(config)) "live" else "demo"),
         actionButton("logout", "Çıkış", class = "btn-ghost btn-compact")
       )
     ),
     div(
       class = "app-grid",
-      aside(
+      tags$aside(
         class = "sidebar",
         div(class = "sidebar-label", "ÇALIŞMA ALANI"),
         radioButtons(
           "section", NULL,
-          choiceNames = c("Maç merkezi", "Muhtemel 11", "Stil savaşı", "Oyuncu radarları", "Model hafızası"),
-          choiceValues = c("overview", "lineups", "styles", "players", "memory"),
+          choiceNames = c("Maç merkezi", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası"),
+          choiceValues = c("overview", "lineups", "styles", "teams", "players", "memory"),
           selected = "overview"
         ),
         div(class = "sidebar-divider"),
         div(class = "sidebar-label", "VERİ KAYNAĞI"),
-        selectInput("fixture_id", NULL, choices = c("Boğaz FK — Anadolu 1907" = "DEMO-001")),
-        actionButton("run_analysis", "Maçı yeniden analiz et", class = "btn-primary btn-block"),
+        selectInput("fixture_id", NULL, choices = super_lig_fixture_choices()),
+        actionButton("run_analysis", "Tahmini kaydet", class = "btn-primary btn-block"),
         if (api_football_enabled(config)) {
           tagList(
             textInput("live_fixture_id", "Canlı fixture ID", placeholder = "örn. 1234567"),
@@ -65,14 +65,14 @@ dashboard_ui <- function(config) {
         } else {
           div(
             class = "source-note",
-            strong("Canlı bağlantı kapalı"),
-            span("API anahtarı eklendiğinde fikstür, sakatlık ve resmi 11 verisi alınabilir.")
+            strong("Ücretsiz Süper Lig ön-modeli"),
+            span("TFF fikstürü ve 2025-26 performansı kullanılıyor. Güncel resmi kadro akışı olmadığı için oyuncu ekranı rol bazlıdır.")
           )
         },
         div(class = "sidebar-divider"),
         uiOutput("freshness_ui")
       ),
-      main(
+      tags$main(
         class = "main-canvas",
         uiOutput("section_ui")
       )
@@ -131,6 +131,23 @@ styles_ui <- function() {
   )
 }
 
+teams_ui <- function() {
+  tagList(
+    div(
+      class = "section-heading",
+      div(class = "eyebrow", "LEAGUE INTELLIGENCE"),
+      h1("18 takımın Süper Lig DNA'sı"),
+      p("Teknik direktör, ana oyun fikri, güçlü yön, kırılganlık ve profil güveni. Taktik puanlar kamuya açık verilerden üretilmiş uzman öncülleridir; tracking verisi değildir.")
+    ),
+    div(class = "panel profile-table-panel", tableOutput("team_profile_table")),
+    div(
+      class = "panel caveat-panel",
+      strong("Kaynak tarihi: 24 Ağustos 2026."),
+      " Teknik direktör, transfer ve sakatlık bilgileri hızlı değişir. Motor her tahminde profil güvenini ayrıca düşürüp yükseltir."
+    )
+  )
+}
+
 players_ui <- function() {
   tagList(
     div(class = "section-heading", div(class = "eyebrow", "PLAYER MARKETS"), h1("Gol ve kart radarları"), p("Oyuncu oranları ilk 11 olasılığı ve beklenen dakika ile birlikte hesaplanır.")),
@@ -150,14 +167,25 @@ memory_ui <- function() {
       class = "two-column",
       div(
         class = "panel",
-        h3("Maç-sonu sonuç yükle"),
-        p("CSV dosyanı şablona göre yükle. Aynı fixture ID tekrar gelirse kayıt güvenli biçimde güncellenir."),
+        h3("Gerçek sonucu gir"),
+        p("Maç bittikten sonra skoru buradan kaydet. Sonuçtan sonra oluşturulan tahminler doğruluk hesabına alınmaz."),
+        selectInput("result_fixture_id", "Süper Lig maçı", choices = super_lig_fixture_choices()),
+        div(
+          class = "result-input-row",
+          numericInput("manual_home_goals", "Ev gol", value = 0, min = 0, max = 20, step = 1),
+          numericInput("manual_away_goals", "Dep. gol", value = 0, min = 0, max = 20, step = 1)
+        ),
+        actionButton("save_manual_result", "Gerçek sonucu kaydet", class = "btn-primary"),
+        div(class = "sidebar-divider"),
+        h3("Toplu CSV yükle"),
+        p("Aynı fixture ID tekrar gelirse kayıt güvenli biçimde güncellenir."),
         fileInput("postmatch_file", "Sonuç CSV", accept = c(".csv", "text/csv")),
         actionButton("import_postmatch", "Sonuçları hafızaya al", class = "btn-primary"),
         uiOutput("import_status")
       ),
-      div(class = "panel", h3("Model sağlık kartı"), tableOutput("scorecard_table"))
+      div(class = "panel", h3("Model sağlık kartı"), tableOutput("scorecard_table"), uiOutput("accuracy_note"))
     ),
+    div(class = "panel", h3("Tahmin — gerçek sonuç karşılaştırması"), tableOutput("comparison_table")),
     div(class = "panel", h3("Son analizler"), tableOutput("history_table")),
     div(
       class = "panel roadmap-panel",
@@ -167,13 +195,13 @@ memory_ui <- function() {
       div(class = "roadmap-step", span("03"), div(strong("Kalibrasyon"), p("Brier ve log loss ile model hatası ölçülür."))),
       div(class = "roadmap-step", span("04"), div(strong("Yeniden eğitim"), p("Takım/oyuncu ağırlıkları zaman çürümesiyle güncellenir.")))
     )
-  )
+  
 }
 
 lineup_team_ui <- function(team, xi) {
   position_label <- c(GK = "Kaleci", DEF = "Savunma", MID = "Orta saha", FWD = "Hücum")
   div(
-    div(class = "lineup-head", div(h2(team$team), span(team$formation)), status_badge("Tahmin", "demo")),
+    div(class = "lineup-head", div(h2(team$team), span(team$formation)), status_badge(team$lineup_status %||% "Tahmin", "demo")),
     div(
       class = "lineup-list",
       lapply(seq_len(nrow(xi)), function(i) {
@@ -188,4 +216,3 @@ lineup_team_ui <- function(team, xi) {
     )
   )
 }
-

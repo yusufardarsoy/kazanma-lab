@@ -1,14 +1,40 @@
 clamp <- function(x, lower = 0, upper = 1) pmin(pmax(x, lower), upper)
 
-expected_goals <- function(home, away) {
-  home_xg <- 0.35 +
-    0.012 * home$attack + 0.005 * home$transition + 0.004 * home$set_piece -
-    0.009 * away$defence + 0.16
-  away_xg <- 0.32 +
-    0.012 * away$attack + 0.005 * away$directness + 0.004 * away$set_piece -
-    0.009 * home$defence
+team_value <- function(team, field, default) {
+  if (!field %in% names(team) || length(team[[field]]) == 0 || is.na(team[[field]][[1]])) return(default)
+  as.numeric(team[[field]][[1]])
+}
 
-  c(home = clamp(home_xg, .35, 3.4), away = clamp(away_xg, .30, 3.2))
+team_text <- function(team, field, default = "") {
+  if (!field %in% names(team) || length(team[[field]]) == 0 || is.na(team[[field]][[1]])) return(default)
+  as.character(team[[field]][[1]])
+}
+
+expected_goals <- function(home, away) {
+  home_ppg <- 1.35 + team_value(home, "prior_weight", .55) * (team_value(home, "prior_ppg", 1.35) - 1.35)
+  away_ppg <- 1.35 + team_value(away, "prior_weight", .55) * (team_value(away, "prior_ppg", 1.35) - 1.35)
+  market_delta <- log1p(team_value(home, "market_value_m", 45)) - log1p(team_value(away, "market_value_m", 45))
+
+  home_xg <- 1.45 +
+    .020 * (team_value(home, "attack", 72) - 75) -
+    .014 * (team_value(away, "defence", 72) - 75) +
+    .16 * (home_ppg - away_ppg) +
+    .055 * market_delta +
+    .004 * (team_value(home, "home_edge", 60) - 60) +
+    .0035 * (team_value(home, "transition", 72) + team_value(away, "transition_vulnerability", 55) - 130) +
+    .0030 * (team_value(home, "set_piece", 72) + team_value(away, "aerial_vulnerability", 48) - 130) +
+    .0020 * (team_value(home, "pressing", 72) + team_value(away, "build_up_vulnerability", 50) - 135)
+
+  away_xg <- 1.16 +
+    .020 * (team_value(away, "attack", 72) - 75) -
+    .014 * (team_value(home, "defence", 72) - 75) +
+    .16 * (away_ppg - home_ppg) -
+    .055 * market_delta +
+    .0035 * (team_value(away, "transition", 72) + team_value(home, "transition_vulnerability", 55) - 130) +
+    .0030 * (team_value(away, "set_piece", 72) + team_value(home, "aerial_vulnerability", 48) - 130) +
+    .0020 * (team_value(away, "pressing", 72) + team_value(home, "build_up_vulnerability", 50) - 135)
+
+  c(home = clamp(home_xg, .30, 3.60), away = clamp(away_xg, .25, 3.40))
 }
 
 score_probability_matrix <- function(home_xg, away_xg, max_goals = 6L) {
@@ -73,14 +99,17 @@ style_long <- function(home, away) {
 }
 
 tactical_notes <- function(home, away) {
-  notes <- character()
-  if (home$pressing - away$possession >= 15) {
+  notes <- c(
+    glue::glue("{home$team}: {team_text(home, 'strengths', 'iç saha ve hücum eşleşmesi')}. Ana risk: {team_text(home, 'weaknesses', 'veri belirsizliği')}."),
+    glue::glue("{away$team}: {team_text(away, 'strengths', 'geçiş ve savunma eşleşmesi')}. Ana risk: {team_text(away, 'weaknesses', 'veri belirsizliği')}.")
+  )
+  if (team_value(home, "pressing", 70) + team_value(away, "build_up_vulnerability", 50) >= 140) {
     notes <- c(notes, glue::glue("{home$team}, rakibin ilk pasını yüksek presle bozabilecek profile sahip."))
   }
-  if (away$directness - home$defence >= 2) {
+  if (team_value(away, "transition", 70) + team_value(home, "transition_vulnerability", 50) >= 140) {
     notes <- c(notes, glue::glue("{away$team}, savunma arkası koşu ve erken dikey pasla tehdit üretebilir."))
   }
-  if (abs(home$set_piece - away$set_piece) >= 8) {
+  if (abs(team_value(home, "set_piece", 70) - team_value(away, "set_piece", 70)) >= 8) {
     stronger <- if (home$set_piece > away$set_piece) home$team else away$team
     notes <- c(notes, glue::glue("Duran toplarda belirgin profil üstünlüğü {stronger} tarafında."))
   }
@@ -88,10 +117,13 @@ tactical_notes <- function(home, away) {
     risky <- if (home$discipline < away$discipline) home$team else away$team
     notes <- c(notes, glue::glue("{risky} için geçiş faulleri ve kart riski maç planını etkileyebilir."))
   }
-  if (length(notes) < 3) {
+  if (team_value(home, "profile_confidence", 55) < 60 || team_value(away, "profile_confidence", 55) < 60) {
+    notes <- c(notes, "Takımlardan en az birinin profili düşük güvenli: yeni teknik yapı veya büyük kadro değişimi tahmin aralığını büyütüyor.")
+  }
+  if (length(notes) < 4) {
     notes <- c(notes, "Orta saha ikinci topları ve skorun ilk gol sonrası alacağı yön temel kırılma noktası.")
   }
-  unique(notes)
+  utils::head(unique(notes), 5L)
 }
 
 build_prediction <- function(data) {
@@ -109,6 +141,12 @@ build_prediction <- function(data) {
   home_markets <- project_player_markets(home_players, xg[["home"]], away$discipline)
   away_markets <- project_player_markets(away_players, xg[["away"]], home$discipline)
 
+  profile_confidence <- mean(c(
+    team_value(home, "profile_confidence", 45),
+    team_value(away, "profile_confidence", 45)
+  )) / 100
+  data_mode <- as.character(fixture$data_mode[[1]])
+
   list(
     fixture = fixture,
     home = home,
@@ -123,10 +161,12 @@ build_prediction <- function(data) {
       dplyr::left_join(data$teams |> dplyr::select(team_id, team), by = "team_id"),
     styles = style_long(home, away),
     tactical_notes = tactical_notes(home, away),
-    model_version = "adaptive-poisson-0.2",
-    confidence = clamp(.58 + min(.18, (data$learning_matches %||% 0L) * .012), .58, .76),
+    model_version = "superlig-poisson-prior-0.3",
+    confidence = clamp(.34 + .34 * profile_confidence + min(.12, (data$learning_matches %||% 0L) * .006), .42, .80),
     learning_matches = data$learning_matches %||% 0L,
     generated_at = Sys.time(),
-    is_demo = identical(fixture$data_mode, "demo")
+    is_demo = identical(data_mode, "demo"),
+    data_mode = data_mode,
+    lineup_role_based = all(c("identity_status") %in% names(data$players)) && all(data$players$identity_status == "role_prior")
   )
 }

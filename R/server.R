@@ -3,7 +3,11 @@ app_server <- function(input, output, session, config) {
   login_message <- reactiveVal(NULL)
   failed_logins <- reactiveVal(0L)
   locked_until <- reactiveVal(as.POSIXct(NA))
-  prediction_value <- reactiveVal(build_prediction(apply_postmatch_learning(demo_match_data(), config$db_path)))
+  default_fixture_id <- unname(super_lig_fixture_choices()[[1]])
+  build_selected_prediction <- function(fixture_id = default_fixture_id) {
+    build_prediction(apply_postmatch_learning(super_lig_match_data(fixture_id), config$db_path))
+  }
+  prediction_value <- reactiveVal(build_selected_prediction())
   import_message <- reactiveVal(NULL)
   live_snapshot <- reactiveVal(NULL)
 
@@ -49,18 +53,24 @@ app_server <- function(input, output, session, config) {
       overview = overview_ui(),
       lineups = lineups_ui(),
       styles = styles_ui(),
+      teams = teams_ui(),
       players = players_ui(),
       memory = memory_ui(),
       overview_ui()
     )
   })
 
+  observeEvent(input$fixture_id, {
+    req(authenticated(), input$fixture_id)
+    prediction_value(build_selected_prediction(input$fixture_id))
+  }, ignoreInit = TRUE)
+
   observeEvent(input$run_analysis, {
-    req(authenticated())
-    prediction <- build_prediction(apply_postmatch_learning(demo_match_data(), config$db_path))
+    req(authenticated(), input$fixture_id)
+    prediction <- build_selected_prediction(input$fixture_id)
     prediction_value(prediction)
     record_analysis(prediction, config$db_path)
-    showNotification("Maç yeniden analiz edildi ve hafızaya kaydedildi.", type = "message")
+    showNotification("Tahmin zaman damgasıyla donduruldu ve karşılaştırma hafızasına kaydedildi.", type = "message")
   }, ignoreInit = TRUE)
 
   observeEvent(input$sync_live, {
@@ -92,7 +102,11 @@ app_server <- function(input, output, session, config) {
       div(class = "sidebar-label", "SON HESAPLAMA"),
       strong(format(p$generated_at, "%d %b · %H:%M")),
       span(p$model_version),
-      span(if (p$is_demo) "Sentetik veri · gerçek maç iddiası yok" else "Canlı veri")
+      span(dplyr::case_when(
+        identical(p$data_mode, "curated_prior") ~ "TFF fikstürü · küratörlü takım öncülleri",
+        p$is_demo ~ "Sentetik veri",
+        TRUE ~ "Canlı veri"
+      ))
     )
   })
 
@@ -109,7 +123,7 @@ app_server <- function(input, output, session, config) {
         class = "score-call",
         span("En olası skor"),
         strong(paste0(p$likely_score$home, "–", p$likely_score$away)),
-        small(scales::percent(p$likely_score$probability, accuracy = .1))
+        tags$small(scales::percent(p$likely_score$probability, accuracy = .1))
       )
     )
   })
@@ -139,9 +153,9 @@ app_server <- function(input, output, session, config) {
     p <- prediction()
     div(
       class = "model-note",
-      div(strong("Gol modeli"), span("Poisson skor dağılımı")),
-      div(strong("11 modeli"), span("Başlama × süre × uygunluk")),
-      div(strong("Oyuncu modeli"), span("Dakika ağırlıklı olay oranı")),
+      div(strong("Gol modeli"), span("Poisson + takım gücü + taktik eşleşme")),
+      div(strong("11 modeli"), span(if (p$lineup_role_based) "Güncel kadro yok: rol bazlı öncül" else "Başlama × süre × uygunluk")),
+      div(strong("Oyuncu modeli"), span(if (p$lineup_role_based) "Oyuncu adı değil, rol olasılığı" else "Dakika ağırlıklı olay oranı")),
       div(strong("Öğrenme hafızası"), span(paste(p$learning_matches, "maç sonucu"))),
       if (!is.null(live_snapshot())) div(strong("Canlı özet"), span("API snapshot hazır; eğitim hattına alınabilir"))
     )
@@ -152,14 +166,24 @@ app_server <- function(input, output, session, config) {
 
   output$style_cards <- renderUI({
     p <- prediction()
-    home_adv <- p$styles |> dplyr::group_by(metric) |> dplyr::filter(value == max(value)) |> dplyr::slice_head(n = 1) |> dplyr::ungroup()
+    style_gap <- p$styles |>
+      dplyr::select(metric, team, value) |>
+      tidyr::pivot_wider(names_from = team, values_from = value) |>
+      dplyr::mutate(gap = abs(.data[[p$home$team]] - .data[[p$away$team]])) |>
+      dplyr::slice_max(gap, n = 1, with_ties = FALSE)
+    press_team <- if (p$home$pressing >= p$away$pressing) p$home else p$away
+    set_piece_team <- if (p$home$set_piece >= p$away$set_piece) p$home else p$away
     div(
       class = "style-card-row",
-      metric_card("Pres üstünlüğü", p$home$team, paste0(p$home$pressing, "/100"), "gold"),
-      metric_card("Duran top üstünlüğü", p$away$team, paste0(p$away$set_piece, "/100"), "teal"),
-      metric_card("En büyük stil farkı", as.character(home_adv$metric[which.max(home_adv$value)]), paste0(max(home_adv$value), "/100"), "violet")
+      metric_card("Pres üstünlüğü", press_team$team, paste0(press_team$pressing, "/100"), "gold"),
+      metric_card("Duran top üstünlüğü", set_piece_team$team, paste0(set_piece_team$set_piece, "/100"), "teal"),
+      metric_card("En büyük stil farkı", as.character(style_gap$metric[[1]]), paste0(style_gap$gap[[1]], " puan"), "violet")
     )
   })
+
+  output$team_profile_table <- renderTable({
+    super_lig_profile_table()
+  }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
 
   output$player_table <- renderTable({
     prediction()$player_markets |>
@@ -185,8 +209,38 @@ app_server <- function(input, output, session, config) {
     tryCatch({
       df <- utils::read.csv(input$postmatch_file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
       count <- import_postmatch_results(df, config$db_path)
-      prediction_value(build_prediction(apply_postmatch_learning(demo_match_data(), config$db_path)))
+      prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
       import_message(list(type = "success", text = paste(count, "maç sonucu hafızaya alındı.")))
+    }, error = function(e) {
+      import_message(list(type = "error", text = conditionMessage(e)))
+    })
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$save_manual_result, {
+    req(authenticated(), input$result_fixture_id)
+    tryCatch({
+      fixtures <- super_lig_fixtures()
+      teams <- super_lig_teams() |> dplyr::select(team_id, team)
+      fixture <- fixtures |>
+        dplyr::filter(fixture_id == input$result_fixture_id) |>
+        dplyr::left_join(teams |> dplyr::rename(home_team_id = team_id, home_team = team), by = "home_team_id") |>
+        dplyr::left_join(teams |> dplyr::rename(away_team_id = team_id, away_team = team), by = "away_team_id")
+      if (nrow(fixture) != 1L) stop("Seçilen Süper Lig maçı bulunamadı.")
+      home_goals <- as.integer(input$manual_home_goals)
+      away_goals <- as.integer(input$manual_away_goals)
+      if (is.na(home_goals) || is.na(away_goals) || home_goals < 0 || away_goals < 0) stop("Gol sayıları sıfır veya daha büyük olmalı.")
+      result <- data.frame(
+        fixture_id = fixture$fixture_id,
+        match_date = format(fixture$kickoff, "%Y-%m-%dT%H:%M:%S%z"),
+        home_team = fixture$home_team,
+        away_team = fixture$away_team,
+        home_goals = home_goals,
+        away_goals = away_goals,
+        stringsAsFactors = FALSE
+      )
+      import_postmatch_results(result, config$db_path)
+      prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
+      import_message(list(type = "success", text = paste0(fixture$home_team, " ", home_goals, "–", away_goals, " ", fixture$away_team, " sonucu kaydedildi.")))
     }, error = function(e) {
       import_message(list(type = "error", text = conditionMessage(e)))
     })
@@ -213,14 +267,25 @@ app_server <- function(input, output, session, config) {
       )
   }, width = "100%")
 
+  output$comparison_table <- renderTable({
+    comparison <- prediction_result_history(config$db_path)
+    if (nrow(comparison) == 0) return(data.frame(Bilgi = "Henüz sonuçtan önce kaydedilmiş tahmin–sonuç eşleşmesi yok."))
+    comparison
+  }, width = "100%")
+
   output$scorecard_table <- renderTable({
     score <- model_scorecard(config$db_path)
     score |>
       dplyr::mutate(value = dplyr::case_when(
         metric == "Kapsanan maç" ~ as.character(as.integer(value)),
+        metric == "1X2 isabeti" & !is.na(value) ~ scales::percent(value, accuracy = .1),
         is.na(value) ~ "Veri bekleniyor",
         TRUE ~ format(round(value, 3), nsmall = 3)
       )) |>
       dplyr::rename(Metrik = metric, Değer = value)
   }, width = "100%")
+
+  output$accuracy_note <- renderUI({
+    div(class = "source-note", strong("Nasıl okunur?"), span(scorecard_interpretation(config$db_path)))
+  })
 }

@@ -40,6 +40,9 @@ fetch_upcoming_fixtures <- function(config, next_n = 15L) {
 
 fetch_fixture_snapshot <- function(config, fixture_id) {
   fixture <- api_football_get(config, "/fixtures", list(id = fixture_id, timezone = config$timezone))
+  if (length(fixture) != 1L || as.integer(fixture[[1]]$league$id) != 203L || as.integer(fixture[[1]]$league$season) != 2026L) {
+    stop("Bu fixture 2026-27 Türkiye Süper Ligi'ne ait değil; uygulama başka ligleri analiz etmez.")
+  }
   prediction <- api_football_get(config, "/predictions", list(fixture = fixture_id))
   lineups <- api_football_get(config, "/fixtures/lineups", list(fixture = fixture_id))
   injuries <- api_football_get(config, "/injuries", list(fixture = fixture_id, timezone = config$timezone))

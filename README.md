@@ -2,7 +2,7 @@
 
 Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçlarına uyarlayan kişisel bir R Shiny analiz odasıdır. Muhtemel ilk 11'i, maç sonucu ve skor olasılıklarını, golcü/kart adaylarını ve iki takımın oyun stili eşleşmesini tek ekranda gösterir.
 
-> Mevcut sürüm çalışan bir MVP'dir. Uygulama ilk açılışta **açıkça işaretlenmiş sentetik demo verisi** kullanır; bu değerler gerçek bir maç için bahis veya kesin sonuç iddiası değildir.
+> Mevcut sürüm yalnızca **2026-27 Trendyol Süper Lig** maçlarını açar. TFF fikstürü, 2025-26 resmi lig performansı, kadro değeri ve kamuya açık takım incelemelerinden oluşturulmuş takım öncülleri kullanılır. Olasılıklar kesin sonuç veya bahis tavsiyesi değildir.
 
 ## Şu anda çalışanlar
 
@@ -13,8 +13,11 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 - İlk 11 olasılığı ve beklenen dakika ağırlıklı gol/kart projeksiyonu
 - Pres, topa sahip olma, dikeylik, genişlik, geçiş, duran top ve disiplin karşılaştırması
 - Kural tabanlı taktik eşleşme notları
+- Süper Lig'deki 18 takım için teknik direktör, oyun kimliği, güçlü yön, zayıflık ve profil güveni
+- 28-31 Ağustos 2026 tarihli resmi 3. hafta programında dokuz seçilebilir maç
 - Her analiz anını SQLite'a kaydeden model hafızası
-- Maç-sonu CSV içe aktarma, Brier skoru ve log loss ölçüm iskeleti
+- Ekrandan gerçek skor girişi veya toplu CSV içe aktarma
+- İleriye dönük 1X2 isabeti, Brier skoru ve log loss; sonuçtan sonra üretilen tahminleri ölçümden çıkaran zaman kontrolü
 - API-Football için fikstür, tahmin, resmi ilk 11 ve sakatlık/ceza snapshot bağlantısı
 - Docker ve GitHub Actions hazırlığı
 
@@ -23,8 +26,9 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 1. **Maç merkezi:** kazanma olasılıkları, beklenen gol, en olası skor ve skor matrisi.
 2. **Muhtemel 11:** oyuncu bazında başlama olasılığı ve rol.
 3. **Stil savaşı:** iki takımın normalize oyun profili ve taktik kırılma noktaları.
-4. **Oyuncu radarları:** gol atma ve kart görme olasılık sıralaması.
-5. **Model hafızası:** analiz geçmişi, maç-sonu sonuç girişi ve kalibrasyon ölçümleri.
+4. **Süper Lig DNA:** 18 takımın teknik direktörü, taktik özeti, güçlü/zayıf yönleri ve veri güveni.
+5. **Oyuncu radarları:** ücretsiz güncel kadro akışı yokken açıkça işaretlenmiş rol bazlı gol/kart öncülleri.
+6. **Model hafızası:** analiz geçmişi, maç-sonu sonuç girişi ve ileriye dönük kalibrasyon ölçümleri.
 
 ## Yerelde çalıştırma
 
@@ -38,7 +42,17 @@ install.packages(c(
 shiny::runApp()
 ```
 
-Varsayılan yerel demo girişi `arda / kazanma-lab`'dır. Bu sadece geliştirme kolaylığı içindir.
+Varsayılan yerel geliştirme girişi `arda / kazanma-lab`'dır. Bu sadece geliştirme kolaylığı içindir.
+
+## Süper Lig veri kapsamı
+
+- Lig üyeliği ve fikstür: TFF 2026-27 resmi fikstürü.
+- Geçmiş performans: TFF 2025-26 final puan tablosu (O/G/B/M/A/Y/P).
+- Kadro büyüklüğü için zayıf öncül: 2026-27 Transfermarkt takım piyasa değerleri.
+- Oyun stili: resmi sonuçlar ve kamuya açık sezon incelemelerinden türetilmiş, 0-100 arası küratörlü uzman puanı.
+- Güncellik tarihi: 24 Ağustos 2026.
+
+Kaynak envanteri `data/super_lig_sources.csv` dosyasındadır. Taktik puanlar gözlenmiş tracking verisi gibi sunulmaz; teknik direktör veya büyük kadro değişimi olan takımların profil güveni özellikle düşürülür.
 
 ## Güvenli kişisel kullanım
 
@@ -71,10 +85,10 @@ Uygulama `http://localhost:3838` adresinde açılır. `kazanma-data` volume'u an
 
 ```text
 FOOTBALL_API_KEY=...
-FOOTBALL_LEAGUE_ID=203
-FOOTBALL_SEASON=2026
 FOOTBALL_TIMEZONE=Europe/Istanbul
 ```
+
+Lig kimliği `203`, sezon da `2026` olarak kodda kilitlidir; ortam değişkeniyle başka lige çevrilemez.
 
 API-Football'da bir fixture ID; fikstür, olay, istatistik, oyuncu performansı, ilk 11, sakatlık ve tahmin verilerini bağlayan ana anahtardır. Resmi ilk 11 çoğu organizasyonda maçtan kısa süre önce gelir; veri yoksa uygulama tahmin durumunu “onaylı” gibi göstermemelidir.
 
@@ -86,7 +100,7 @@ Kaynaklar:
 
 ## Maç-sonu öğrenme döngüsü
 
-`data/postmatch_template.csv` biçiminde sonuç yükle. Zorunlu alanlar:
+Sonucu doğrudan **Model hafızası** ekranından girebilir veya `data/postmatch_template.csv` biçiminde toplu yükleyebilirsin. Zorunlu alanlar:
 
 ```text
 fixture_id, match_date, home_team, away_team, home_goals, away_goals
@@ -98,13 +112,13 @@ fixture_id, match_date, home_team, away_team, home_goals, away_goals
 home_xg, away_xg, home_cards, away_cards
 ```
 
-Aynı `fixture_id` tekrar yüklenirse kayıt güncellenir. Tahminler analiz anında dondurulduğu için daha sonra gerçek sonuçla karşılaştırılabilir.
+Aynı `fixture_id` tekrar yüklenirse kayıt güncellenir. Tahminler analiz anında dondurulur. Model sağlık kartı yalnızca maç başlangıcından önce kaydedilen son tahmini kullanır; sonradan üretilen tahminler doğruluğu yapay biçimde yükseltemez.
 
 ## Model yol haritası
 
 MVP sonrası üretim sırası:
 
-1. Seçilen ligler için 2–3 sezonluk fikstür, takım, oyuncu, sakatlık ve maç istatistiği senkronizasyonu.
+1. Süper Lig için 2–3 sezonluk fikstür, takım, oyuncu, sakatlık ve maç istatistiği senkronizasyonu.
 2. Takım hücum/savunma gücü için zaman ağırlıklı Dixon–Coles veya hiyerarşik Poisson model.
 3. İlk 11 için oyuncu uygunluğu, son başlangıçlar, teknik direktör formasyonu ve pozisyon rekabetini kullanan sınıflandırıcı.
 4. Golcü ve kart için dakika koşullu ayrı oyuncu modelleri.

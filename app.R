@@ -33,6 +33,7 @@ source_files <- c(
   "R/config.R",
   "R/auth.R",
   "R/demo_data.R",
+  "R/super_lig_data.R",
   "R/model_engine.R",
   "R/storage.R",
   "R/provider_api_football.R",

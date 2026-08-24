@@ -1,5 +1,3 @@
-lab_palette <- c("Boğaz FK" = "#D7A84B", "Anadolu 1907" = "#63B4A5")
-
 theme_kazanma <- function(base_size = 12) {
   ggplot2::theme_minimal(base_size = base_size, base_family = "sans") +
     ggplot2::theme(
@@ -29,7 +27,7 @@ plot_outcomes <- function(prediction) {
     ggplot2::geom_text(ggplot2::aes(label = scales::percent(probability, accuracy = 1)), vjust = -0.55, colour = "#F5F8F6", fontface = "bold", size = 4.2) +
     ggplot2::scale_fill_manual(values = c(home = "#D7A84B", draw = "#68756E", away = "#63B4A5")) +
     ggplot2::scale_y_continuous(labels = scales::percent, limits = c(0, max(df$probability) * 1.22), expand = c(0, 0)) +
-    ggplot2::labs(title = "Maç sonucu olasılığı", subtitle = "Bağımsız Poisson gol modeli · demo kalibrasyonu", x = NULL, y = "Olasılık") +
+    ggplot2::labs(title = "Maç sonucu olasılığı", subtitle = "Süper Lig takım gücü + taktik eşleşmeli Poisson ön-modeli", x = NULL, y = "Olasılık") +
     theme_kazanma()
 }
 

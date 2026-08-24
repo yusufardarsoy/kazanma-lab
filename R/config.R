@@ -15,8 +15,9 @@ read_app_config <- function() {
     db_path = Sys.getenv("KAZANMA_DB_PATH", "data/kazanma.sqlite"),
     football_api_key = Sys.getenv("FOOTBALL_API_KEY", ""),
     football_api_base = Sys.getenv("FOOTBALL_API_BASE", "https://v3.football.api-sports.io"),
-    league_id = as.integer(Sys.getenv("FOOTBALL_LEAGUE_ID", "203")),
-    season = as.integer(Sys.getenv("FOOTBALL_SEASON", format(Sys.Date(), "%Y"))),
+    # Uygulama bilinçli olarak yalnızca 2026-27 Türkiye Süper Ligi'ne kilitlidir.
+    league_id = 203L,
+    season = 2026L,
     timezone = Sys.getenv("FOOTBALL_TIMEZONE", "Europe/Istanbul")
   )
 }

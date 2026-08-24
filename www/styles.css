@@ -177,6 +177,12 @@ p { color: var(--muted); line-height: 1.6; }
 .table-hover > tbody > tr:hover { background: #16211c; }
 .import-message { margin-top: 14px; padding: 10px 12px; border-radius: 9px; }
 .import-message.success { color: #a4ded1; border: 1px solid #285e52; background: #14352e; }
+.result-input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.profile-table-panel { overflow-x: auto; }
+.profile-table-panel .table { min-width: 1180px; }
+.profile-table-panel .table td:nth-child(4),
+.profile-table-panel .table td:nth-child(5),
+.profile-table-panel .table td:nth-child(6) { min-width: 230px; white-space: normal; line-height: 1.45; }
 .roadmap-panel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .roadmap-panel h3 { grid-column: 1 / -1; }
 .roadmap-step { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #0d1511; }
@@ -209,4 +215,3 @@ p { color: var(--muted); line-height: 1.6; }
   .roadmap-panel { grid-template-columns: 1fr; }
   .login-card { padding: 28px 22px; }
 }
-

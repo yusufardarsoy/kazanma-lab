@@ -51,7 +51,7 @@ record_analysis <- function(prediction, db_path) {
     expected_home_goals = unname(prediction$expected_goals[["home"]]),
     expected_away_goals = unname(prediction$expected_goals[["away"]]),
     model_version = prediction$model_version,
-    data_mode = if (prediction$is_demo) "demo" else "live",
+    data_mode = prediction$data_mode %||% if (prediction$is_demo) "demo" else "live",
     created_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
     stringsAsFactors = FALSE
   )
@@ -77,7 +77,7 @@ validate_postmatch_upload <- function(df) {
   optional <- c(home_xg = NA_real_, away_xg = NA_real_, home_cards = NA_integer_, away_cards = NA_integer_)
   for (name in names(optional)) if (!name %in% names(df)) df[[name]] <- optional[[name]]
 
-  df |>
+  clean <- df |>
     dplyr::transmute(
       fixture_id = as.character(fixture_id),
       match_date = as.character(match_date),
@@ -91,10 +91,18 @@ validate_postmatch_upload <- function(df) {
       away_cards = as.integer(away_cards),
       imported_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
     )
+  if (any(!nzchar(clean$fixture_id)) || any(!nzchar(clean$home_team)) || any(!nzchar(clean$away_team))) {
+    stop("Fixture ID ve takım adları boş olamaz.")
+  }
+  if (anyNA(clean$home_goals) || anyNA(clean$away_goals) || any(clean$home_goals < 0) || any(clean$away_goals < 0)) {
+    stop("Gol sayıları sıfır veya daha büyük tam sayı olmalı.")
+  }
+  clean
 }
 
 import_postmatch_results <- function(df, db_path) {
   clean <- validate_postmatch_upload(df)
+  if (exists("validate_super_lig_results", mode = "function")) clean <- validate_super_lig_results(clean)
   with_store(db_path, function(con) {
     DBI::dbWithTransaction(con, {
       for (i in seq_len(nrow(clean))) {
@@ -121,7 +129,13 @@ apply_postmatch_learning <- function(data, db_path) {
   results <- with_store(db_path, function(con) {
     DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date DESC")
   })
-  if (nrow(results) == 0) return(data)
+  known_teams <- data$teams$team
+  results <- results |>
+    dplyr::filter(home_team %in% known_teams, away_team %in% known_teams)
+  if (nrow(results) == 0) {
+    data$learning_matches <- 0L
+    return(data)
+  }
 
   team_rows <- dplyr::bind_rows(
     results |>
@@ -165,26 +179,86 @@ apply_postmatch_learning <- function(data, db_path) {
   data
 }
 
-model_scorecard <- function(db_path) {
+parse_model_timestamp <- function(values, date_at_end_of_day = FALSE) {
+  parsed <- vapply(as.character(values), function(value) {
+    value <- trimws(value)
+    if (date_at_end_of_day && grepl("^\\d{4}-\\d{2}-\\d{2}$", value)) {
+      value <- paste0(value, "T23:59:59+0300")
+    }
+    formats <- c("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d")
+    for (format in formats) {
+      candidate <- suppressWarnings(as.POSIXct(value, format = format, tz = "Europe/Istanbul"))
+      if (!is.na(candidate)) return(as.numeric(candidate))
+    }
+    NA_real_
+  }, numeric(1))
+  as.POSIXct(parsed, origin = "1970-01-01", tz = "Europe/Istanbul")
+}
+
+eligible_prediction_results <- function(db_path) {
   with_store(db_path, function(con) {
     results <- DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date")
     analyses <- DBI::dbGetQuery(con, "SELECT * FROM analyses ORDER BY created_at")
-    if (nrow(results) == 0 || nrow(analyses) == 0) {
-      return(tibble::tibble(metric = c("Brier skoru", "Log loss", "Kapsanan maç"), value = c(NA, NA, 0)))
-    }
-    joined <- analyses |>
-      dplyr::group_by(fixture_id) |>
-      dplyr::slice_tail(n = 1) |>
-      dplyr::ungroup() |>
+    if (nrow(results) == 0 || nrow(analyses) == 0) return(tibble::tibble())
+    analyses |>
       dplyr::inner_join(results, by = "fixture_id") |>
       dplyr::mutate(
+        analysis_time = parse_model_timestamp(created_at),
+        result_time = parse_model_timestamp(match_date, date_at_end_of_day = TRUE)
+      ) |>
+      dplyr::filter(!is.na(analysis_time), !is.na(result_time), analysis_time <= result_time) |>
+      dplyr::group_by(fixture_id) |>
+      dplyr::slice_max(analysis_time, n = 1, with_ties = FALSE) |>
+      dplyr::ungroup() |>
+      dplyr::mutate(
         actual = dplyr::case_when(home_goals > away_goals ~ "home", home_goals < away_goals ~ "away", TRUE ~ "draw"),
+        predicted = dplyr::case_when(
+          home_win >= draw & home_win >= away_win ~ "home",
+          away_win >= home_win & away_win >= draw ~ "away",
+          TRUE ~ "draw"
+        ),
+        correct = predicted == actual,
+        predicted_probability = pmax(home_win, draw, away_win),
         p_actual = dplyr::case_when(actual == "home" ~ home_win, actual == "draw" ~ draw, TRUE ~ away_win),
         brier = ((home_win - (actual == "home"))^2 + (draw - (actual == "draw"))^2 + (away_win - (actual == "away"))^2) / 3
       )
-    tibble::tibble(
-      metric = c("Brier skoru", "Log loss", "Kapsanan maç"),
-      value = c(mean(joined$brier), mean(-log(pmax(joined$p_actual, 1e-6))), nrow(joined))
-    )
   })
+}
+
+model_scorecard <- function(db_path) {
+  joined <- eligible_prediction_results(db_path)
+  if (nrow(joined) == 0) {
+    return(tibble::tibble(metric = c("1X2 isabeti", "Brier skoru", "Log loss", "Kapsanan maç"), value = c(NA, NA, NA, 0)))
+  }
+  tibble::tibble(
+    metric = c("1X2 isabeti", "Brier skoru", "Log loss", "Kapsanan maç"),
+    value = c(mean(joined$correct), mean(joined$brier), mean(-log(pmax(joined$p_actual, 1e-6))), nrow(joined))
+  )
+}
+
+prediction_result_history <- function(db_path, limit = 20L) {
+  outcome_label <- c(home = "Ev", draw = "Beraberlik", away = "Deplasman")
+  joined <- eligible_prediction_results(db_path)
+  if (nrow(joined) == 0) return(tibble::tibble())
+  joined |>
+    dplyr::arrange(dplyr::desc(result_time)) |>
+    dplyr::slice_head(n = as.integer(limit)) |>
+    dplyr::transmute(
+      Maç = paste(home_team.x, "—", away_team.x),
+      Tahmin = unname(outcome_label[predicted]),
+      Gerçek = unname(outcome_label[actual]),
+      Doğru = ifelse(correct, "Evet", "Hayır"),
+      `Gerçeğe verilen olasılık` = scales::percent(p_actual, accuracy = .1),
+      Brier = format(round(brier, 3), nsmall = 3),
+      `Tahmin zamanı` = format(analysis_time, "%d.%m.%Y %H:%M")
+    )
+}
+
+scorecard_interpretation <- function(db_path) {
+  score <- model_scorecard(db_path)
+  n <- as.integer(score$value[score$metric == "Kapsanan maç"])
+  if (n == 0L) return("Henüz sonuçtan önce kaydedilmiş bir tahmin ile gerçek sonuç eşleşmedi.")
+  if (n < 30L) return(paste0(n, " maç var: doğruluk değeri henüz çok oynak; karar vermek için erken."))
+  if (n < 100L) return(paste0(n, " maç var: ilk kalibrasyon sinyali oluştu, ama güvenilir kıyas için örneklem hâlâ sınırlı."))
+  paste0(n, " maçlık ileriye dönük örneklem: 1X2 isabetiyle birlikte Brier ve log loss'u da izlemek gerekir.")
 }
