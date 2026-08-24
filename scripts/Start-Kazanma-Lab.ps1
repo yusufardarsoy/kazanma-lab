@@ -1,4 +1,9 @@
-param([switch]$SkipSync)
+param(
+  [switch]$SkipSync,
+  [switch]$NoBrowser,
+  [ValidateRange(1024, 65535)]
+  [int]$Port = 3838
+)
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -26,5 +31,6 @@ if (-not $SkipSync) {
   }
 }
 
-Write-Host "Kazanma Lab http://127.0.0.1:3838 adresinde açılıyor. Kapatmak için bu pencerede Ctrl+C kullan."
-& $rscript -e "shiny::runApp('.', host='127.0.0.1', port=3838, launch.browser=TRUE)"
+$launchBrowser = if ($NoBrowser) { "FALSE" } else { "TRUE" }
+Write-Host "Kazanma Lab http://127.0.0.1:$Port adresinde açılıyor. Kapatmak için bu pencerede Ctrl+C kullan."
+& $rscript -e "shiny::runApp('.', host='127.0.0.1', port=$Port, launch.browser=$launchBrowser)"
