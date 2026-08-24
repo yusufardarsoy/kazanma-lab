@@ -31,6 +31,21 @@ read_app_config <- function() {
     db_path = Sys.getenv("KAZANMA_DB_PATH", "data/kazanma.sqlite"),
     football_api_key = Sys.getenv("FOOTBALL_API_KEY", ""),
     football_api_base = Sys.getenv("FOOTBALL_API_BASE", "https://v3.football.api-sports.io"),
+    football_data_season_url = Sys.getenv(
+      "FOOTBALL_DATA_SEASON_URL",
+      "https://www.football-data.co.uk/mmz4281/2627/T1.csv"
+    ),
+    football_data_fixtures_url = Sys.getenv(
+      "FOOTBALL_DATA_FIXTURES_URL",
+      "https://www.football-data.co.uk/fixtures.csv"
+    ),
+    public_data_refresh_hours = as.numeric(Sys.getenv("PUBLIC_DATA_REFRESH_HOURS", "6")),
+    odds_api_key = Sys.getenv("ODDS_API_KEY", ""),
+    odds_api_base = Sys.getenv("ODDS_API_BASE", "https://api.the-odds-api.com/v4"),
+    odds_sport_key = "soccer_turkey_super_league",
+    odds_regions = Sys.getenv("ODDS_API_REGIONS", "eu"),
+    odds_markets = Sys.getenv("ODDS_API_MARKETS", "h2h,totals"),
+    odds_refresh_hours = as.numeric(Sys.getenv("ODDS_API_REFRESH_HOURS", "8")),
     cache_dir = Sys.getenv("KAZANMA_CACHE_DIR", "data/cache"),
     sync_detail_budget = as.integer(Sys.getenv("KAZANMA_SYNC_DETAIL_BUDGET", "8")),
     # Uygulama bilinçli olarak yalnızca 2026-27 Türkiye Süper Ligi'ne kilitlidir.

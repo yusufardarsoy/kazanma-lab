@@ -38,7 +38,7 @@ dashboard_ui <- function(config) {
       ),
       div(
         class = "topbar-actions",
-        status_badge(if (api_football_enabled(config)) "Süper Lig + canlı bağlantı" else "Süper Lig ön-modeli", if (api_football_enabled(config)) "live" else "demo"),
+        status_badge("Süper Lig + ücretsiz web verisi", "live"),
         actionButton("logout", "Çıkış", class = "btn-ghost btn-compact")
       )
     ),
@@ -65,18 +65,12 @@ dashboard_ui <- function(config) {
           options = list(placeholder = "Takım veya maç ara", maxOptions = 306)
         ),
         actionButton("run_analysis", "Tahmini kaydet", class = "btn-primary btn-block"),
-        if (api_football_enabled(config)) {
-          tagList(
-            actionButton("sync_live", "Şimdi veri eşitle", class = "btn-secondary btn-block"),
-            div(class = "source-note", span("Ücretsiz kota korunur: görev başına ayrıntı çağrıları sınırlandırılır."))
-          )
-        } else {
-          div(
-            class = "source-note",
-            strong("Ücretsiz Süper Lig ön-modeli"),
-            span("34 haftalık TFF fikstürü ve 2025-26 performansı kullanılıyor. Kocaelispor–Amed maçında güncel muhtemel 11; diğer maçlarda güncellenene kadar rol bazlı adaylar gösterilir.")
-          )
-        },
+        actionButton("sync_live", "Şimdi veri eşitle", class = "btn-secondary btn-block"),
+        div(
+          class = "source-note",
+          strong("Anahtarsız temel akış"),
+          span("Football-Data.co.uk sonuç, yayınlanmış maç tarihi ve piyasa oranlarını ücretsiz eşitler. API anahtarları yalnızca daha hızlı sonuç ve kadro ayrıntısı ekler.")
+        ),
         div(class = "sidebar-divider"),
         uiOutput("freshness_ui")
       ),

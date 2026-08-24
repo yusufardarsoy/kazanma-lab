@@ -24,10 +24,9 @@ login_ui <- function(config, message = NULL) {
       passwordInput("login_password", "Şifre", placeholder = "••••••••••••"),
       actionButton("login_submit", "Analiz odasına gir", class = "btn-login"),
       if (is_demo_environment(config)) {
-        div(class = "demo-credential", "Yerel demo: arda / kazanma-lab")
+        div(class = "demo-credential", paste0("Yerel demo: ", config$username, " / ", config$password))
       },
       p(class = "login-footnote", "Üretimde yalnızca HTTPS üzerinden kullan. Şifre GitHub'a yazılmaz.")
     )
   )
 }
-

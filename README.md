@@ -23,8 +23,10 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 - Ekrandan gerçek skor girişi veya toplu CSV içe aktarma
 - İleriye dönük 1X2 isabeti, Brier skoru ve log loss; sonuçtan sonra üretilen tahminleri ölçümden çıkaran zaman kontrolü
 - API-Football resmî API'sinden fikstür, resmî ilk 11, sakatlık/ceza ve maç-sonu veri bağlantısı
+- Football-Data.co.uk'nun anahtar gerektirmeyen ücretsiz CSV'lerinden yayınlanan maç günü/saatı, sonuç, xG/şut/kart istatistiği ve piyasa ortalaması oranları
+- The Odds API'nin opsiyonel 500 kredi/ay ücretsiz planından güncel 1X2, 2,5 gol oranları ve son üç günlük tamamlanmış skorlar
 - Site kapalıyken çalışan Windows görevi; açılışta geriye dönük eksik tamamlama
-- Aynı maçı çoğaltmayan SQLite kayıtları ve ücretsiz kota için 24 saatlik 90 istek güvenlik freni
+- Aynı maçı çoğaltmayan SQLite kayıtları, sonuç kaynak geçmişi ve ücretsiz kotalar için 24 saatlik/8 saatlik güvenlik frenleri
 - Docker ve GitHub Actions hazırlığı
 
 ## Ekranlar
@@ -90,9 +92,13 @@ docker compose up --build
 
 Uygulama `http://localhost:3838` adresinde açılır. `kazanma-data` volume'u analiz hafızasını yeniden başlatmalar arasında korur.
 
-## Canlı veri bağlantısı
+## Ücretsiz veri bağlantıları
 
-Bu proje sayfa kazımaz. Sağlayıcının yayımladığı resmî, belgelenmiş API'yi ve kullanım koşullarını kullanır. API-Football ücretsiz planda ödeme gerektirmeden 100 istek/gün ve 10 istek/dakika verir; kapsam endpoint'i ilgili sezon için ilk 11, eksik ve istatistik desteğini onaylamazsa motor o veri türünü çekmez. Kullanım koşullarına ve kota sınırlarına uymak kullanıcı sorumluluğundadır; bu açıklama hukuki görüş değildir.
+Temel akış API anahtarı ve ödeme istemez. Uygulama [Football-Data.co.uk Türkiye CSV'sini](https://www.football-data.co.uk/turkeym.php) ve [yayınlanmış fikstür CSV'sini](https://www.football-data.co.uk/matches.php) doğrudan indirir. Sağlayıcı veriyi ücretsiz olarak yayımlar ve sonuç dosyalarını en az haftada iki kez güncellediğini belirtir. Bu nedenle anahtarsız sonuç akışı gerçek zamanlı değildir; kaynak yeni dosyayı yayımladığında görev geriye dönük tamamlar. İngiltere yerel saatleri `Europe/London` zaman diliminden `Europe/Istanbul` zaman dilimine çevrilir. Takım adlarının en az %90'ı ev/deplasman yönüyle TFF kataloğuna eşleşmezse içe aktarma durur.
+
+Güncel oran ve daha hızlı sonuç istersen [The Odds API](https://the-odds-api.com/) ücretsiz anahtarını ekleyebilirsin. Ücretsiz Starter planı 500 kredi/aydır; sağlayıcının kapsam listesinde Türkiye Süper Ligi `soccer_turkey_super_league` anahtarıyla oran ve skor desteği vardır. Motor 1X2 ve 2,5 gol marketlerini en fazla 8 saatte bir yeniler, yanıt başlıklarındaki kalan krediyi kaydeder ve ücretsiz aylık bütçenin altında kalacak şekilde fren uygular. Sağlayıcının koşulları verinin site, uygulama, panel ve analiz araçlarında kullanılmasına izin verir; ham veriyi ayrı bir ürün gibi yeniden satmak/dağıtmak yasaktır.
+
+API-Football yalnızca resmî ilk 11, sakatlık/ceza ve daha ayrıntılı maç-sonu olayları için opsiyonel üçüncü katmandır. Ücretsiz planda ödeme gerektirmeden 100 istek/gün ve 10 istek/dakika verir; kapsam endpoint'i ilgili sezon için bir veri türünü onaylamazsa motor o endpoint'i çekmez. Kullanım koşullarına ve yerel mevzuata uymak kullanıcı sorumluluğundadır; bu açıklama hukuki görüş değildir.
 
 1. [API-Football](https://dashboard.api-football.com/register) üzerinden ücretsiz hesap açıp anahtarı al.
 2. `.env.example` dosyasını `.env` adıyla kopyala.
@@ -103,6 +109,7 @@ Bu proje sayfa kazımaz. Sağlayıcının yayımladığı resmî, belgelenmiş A
 ```text
 FOOTBALL_API_KEY=...
 FOOTBALL_TIMEZONE=Europe/Istanbul
+ODDS_API_KEY=istege-bagli-ucretsiz-anahtar
 ```
 
 Lig kimliği `203`, sezon da `2026` olarak kodda kilitlidir; ortam değişkeniyle başka lige çevrilemez. Motor her turda önce bütün sezon fikstürünü tek çağrıyla uzlaştırır. Yaklaşan maçlarda eksikleri, başlama saatine 90 dakika kala resmî ilk 11'i; biten maçlarda skor, olay, takım ve oyuncu istatistiklerini kademeli olarak saklar.
@@ -111,6 +118,11 @@ API-Football'da bir fixture ID; fikstür, olay, istatistik, oyuncu performansı,
 
 Kaynaklar:
 
+- [Football-Data.co.uk veri sayfası ve güncelleme düzeni](https://www.football-data.co.uk/data)
+- [Football-Data.co.uk Türkiye CSV'si](https://www.football-data.co.uk/turkeym.php)
+- [The Odds API fiyatlandırma ve kapsam](https://the-odds-api.com/)
+- [The Odds API v4 kullanım rehberi](https://the-odds-api.com/liveapi/guides/v4/)
+- [The Odds API kullanım koşulları](https://the-odds-api.com/terms-and-conditions.html)
 - [API-Football başlangıç ve endpoint rehberi](https://www.api-football.com/news/post/how-to-get-started-with-api-football-the-complete-beginners-guide)
 - [API-Football kota ve coverage rehberi](https://www.api-football.com/news/post/how-to-optimize-api-sports-calls-and-quota-usage)
 - [API-Football fiyatlandırma](https://www.api-football.com/pricing)
@@ -118,7 +130,7 @@ Kaynaklar:
 
 ## Site kapalıyken otomatik kayıt
 
-`.env` anahtarını ekledikten sonra PowerShell'de proje klasöründeyken bir kez şunu çalıştır:
+PowerShell'de proje klasöründeyken bir kez şunu çalıştır; anahtarsız Football-Data akışı için `.env` zorunlu değildir:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Windows-Data-Task.ps1
@@ -127,9 +139,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Window
 `KazanmaLabDataSync` adlı görev şunları yapar:
 
 - Windows oturumu açıldığında bir geriye-dönük tamamlama çalıştırır.
-- Her gün 10:00'da sonuç/fikstür kontrolü yapar.
+- Her gün 10:00'da sonuç/fikstür/oran kontrolü yapar.
 - Maç saatlerini kapsamak için 16:00–00:00 arasında 30 dakikada bir çalışır.
-- Site açık olmasa da `data/kazanma.sqlite` içine sonuçları ve ham ayrıntı paketlerini yazar.
+- Site açık olmasa da `data/kazanma.sqlite` içine sonuçları, kaynak bilgisini, oran görüntülerini ve varsa ham ayrıntı paketlerini yazar.
 - Bilgisayar kapalı veya uykudaysa o anda veri çekemez; Windows yeniden kullanılabilir olduğunda kaçırılan maçları sezon fikstüründen geriye dönük tamamlar.
 
 Görev kayıtları `data/cache/sync.log` dosyasındadır. SQLite ve önbellek uygulama yeniden başlasa da kalır, ancak özellikle GitHub'a gönderilmez. Kişisel yedek almak istersen site ve görev kapalıyken `data/kazanma.sqlite` dosyasını güvenli bir diske kopyala.

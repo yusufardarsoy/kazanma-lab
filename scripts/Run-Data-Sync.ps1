@@ -20,6 +20,14 @@ $rscript = Find-Rscript
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 "[$stamp] Otomatik veri görevi başladı." | Add-Content -LiteralPath (Join-Path $cacheDir "sync.log")
 Set-Location -LiteralPath $projectRoot
-& $rscript (Join-Path $PSScriptRoot "auto_sync.R") 2>&1 |
-  Tee-Object -FilePath (Join-Path $cacheDir "sync.log") -Append
-exit $LASTEXITCODE
+$strictPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$syncOutput = & $rscript (Join-Path $PSScriptRoot "auto_sync.R") 2>&1
+$syncExitCode = $LASTEXITCODE
+$ErrorActionPreference = $strictPreference
+$syncOutput | ForEach-Object {
+  $line = $_.ToString()
+  Write-Output $line
+  $line | Out-File -LiteralPath (Join-Path $cacheDir "sync.log") -Append -Encoding utf8
+}
+exit $syncExitCode

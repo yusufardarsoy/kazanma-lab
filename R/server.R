@@ -89,13 +89,13 @@ app_server <- function(input, output, session, config) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$sync_live, {
-    req(authenticated(), api_football_enabled(config))
-    showNotification("Süper Lig fikstürü, eksikler ve tamamlanan maçlar eşitleniyor…", duration = 3)
+    req(authenticated())
+    showNotification("Süper Lig tarihleri, oranlar ve tamamlanan maçlar eşitleniyor…", duration = 3)
     tryCatch({
-      snapshot <- auto_sync_league(config)
+      snapshot <- auto_sync_all_sources(config, force_public = TRUE, force_odds = FALSE)
       live_snapshot(snapshot)
       prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
-      showNotification(paste0("Güncelleme tamamlandı: ", snapshot$fixtures_mapped, " maç eşleşti, ", snapshot$requests_used, " API isteği kullanıldı."), type = "message")
+      showNotification(paste0("Güncelleme tamamlandı: ", snapshot$results, " sonuç ve ", snapshot$odds_rows, " oran satırı işlendi."), type = "message")
     }, error = function(e) {
       showNotification(conditionMessage(e), type = "error", duration = 8)
     })
@@ -116,6 +116,7 @@ app_server <- function(input, output, session, config) {
       span(dplyr::case_when(
         identical(p$data_mode, "curated_prior") ~ "TFF fikstürü · küratörlü takım öncülleri",
         identical(p$data_mode, "provider_schedule") ~ "API-Football resmî API · TFF fikstür eşlemesi",
+        identical(p$data_mode, "public_schedule") ~ "Football-Data.co.uk · TFF fikstürüyle eşleme",
         p$is_demo ~ "Sentetik veri",
         TRUE ~ "Canlı veri"
       ))
@@ -163,7 +164,8 @@ app_server <- function(input, output, session, config) {
   output$scorer_plot <- renderPlot(plot_player_probability(prediction(), "scorer"), bg = "transparent", res = 110)
   output$card_plot <- renderPlot(plot_player_probability(prediction(), "card"), bg = "transparent", res = 110)
 
-  odds_comparison <- reactive(compare_odds(prediction()))
+  odds_snapshot <- reactive(stored_odds_for_prediction(prediction(), config$db_path))
+  odds_comparison <- reactive(compare_odds(prediction(), odds_snapshot()))
 
   output$overview_odds_teaser <- renderUI({
     comparison <- odds_comparison()
@@ -172,9 +174,9 @@ app_server <- function(input, output, session, config) {
     div(
       class = "panel odds-teaser",
       div(
-        div(class = "panel-kicker", "ORAN RADARI · KULLANICI GÖRÜNTÜSÜ"),
+        div(class = "panel-kicker", paste("ORAN RADARI ·", paste(unique(comparison$source), collapse = " + "))),
         h3("Modelin piyasa fiyatından ayrıldığı seçenekler"),
-        p("24 Ağustos oran görüntüsü; canlı değildir. Model farkı, kesin kazanç anlamına gelmez.")
+        p("Kaynak zaman damgalı piyasa görüntüsüdür; model farkı kesin kazanç anlamına gelmez.")
       ),
       div(
         class = "odds-option-grid",
@@ -213,7 +215,7 @@ app_server <- function(input, output, session, config) {
       metric_card("Model favorisi", summary$model_favorite, "1X2 model olasılığı", "gold"),
       metric_card("Piyasa favorisi", summary$market_favorite, "Marj temizlenmeden en düşük oran", "teal"),
       metric_card("1X2 bahis marjı", scales::percent(summary$bookmaker_margin, accuracy = .1), "Ham oranlar toplamı − %100", "violet"),
-      metric_card("Veri uyarısı", paste(summary$stale_count, "bayat satır"), "Petković oranı değerlendirme dışı", "neutral")
+      metric_card("Veri uyarısı", paste(summary$stale_count, "bayat satır"), "168 saatten eski fiyatlar değerlendirme dışı", "neutral")
     )
   })
 
@@ -261,7 +263,7 @@ app_server <- function(input, output, session, config) {
       strong("Kalite ve güvenlik notu:"),
       paste0(" 1X2 ham olasılıklarının toplamı %", round((1 + result_margin) * 100, 1),
              "; tabloda karşılaştırma için marj temizlenmiştir. Çifte şans ve golcü seçenekleri birbiriyle örtüştüğü için normalize edilmez, yalnızca başabaş olasılığı kullanılır. "),
-      "Korner ve kart bahisleri için kalibre edilmiş olay modeli olmadığı için pastedeki oranlara sahte olasılık eklenmedi. Bu ekran finansal tavsiye değildir."
+      "Korner ve kart bahisleri için kalibre edilmiş olay modeli olmadığı için bu marketlere sahte olasılık eklenmedi. Oranlar sağlayıcının son yayımladığı görüntüdür; bu ekran finansal tavsiye değildir."
     )
   })
 
@@ -429,18 +431,18 @@ app_server <- function(input, output, session, config) {
     health <- automation_health(config$db_path)
     counts <- health$counts[1, ]
     data.frame(
-      Gösterge = c("Eşleşen fikstür", "İlk 11 kaydı olan maç", "Eksik oyuncu kaydı", "Kaydedilmiş sonuç", "Ayrıntılı maç-sonu paket"),
-      Değer = as.integer(c(counts$fixtures, counts$lineup_matches, counts$absences, counts$results, counts$detailed_matches)),
+      Gösterge = c("API-Football fikstürü", "Oran bulunan maç", "Saklanan oran satırı", "İlk 11 kaydı olan maç", "Eksik oyuncu kaydı", "Kaydedilmiş sonuç", "Kaynaklı sonuç", "Ayrıntılı maç-sonu paket"),
+      Değer = as.integer(c(counts$fixtures, counts$odds_matches, counts$odds_rows, counts$lineup_matches, counts$absences, counts$results, counts$sourced_results, counts$detailed_matches)),
       check.names = FALSE
     )
   }, width = "100%")
 
   output$automation_note <- renderUI({
     health <- automation_health(config$db_path)
-    if (nrow(health$last_run) == 0) {
-      return(div(class = "source-note", strong("Henüz otomatik eşitleme yok."), span(if (api_football_enabled(config)) "Şimdi eşitle düğmesini kullanabilir veya Windows görevini kurabilirsin." else "Önce ücretsiz API anahtarını .env dosyasına ekle.")))
+    if (nrow(health$last_public_run) == 0) {
+      return(div(class = "source-note", strong("Henüz otomatik eşitleme yok."), span("Şimdi veri eşitle düğmesini kullanabilir veya Windows görevini kurabilirsin; temel akış API anahtarı istemez.")))
     }
-    run <- health$last_run[1, ]
-    div(class = "source-note", strong(if (run$status == "ok") "Son görev başarılı" else "Son görev hata verdi"), span(paste(run$finished_at, "·", run$message)))
+    run <- health$last_public_run[1, ]
+    div(class = "source-note", strong(if (run$status %in% c("ok", "cached")) "Son görev kullanılabilir" else "Son görev hata verdi"), span(paste(run$source, "·", run$finished_at, "·", run$message)))
   })
 }

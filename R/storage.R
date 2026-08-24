@@ -96,10 +96,145 @@ initialize_store <- function(db_path) {
         fixtures_mapped INTEGER NOT NULL,
         message TEXT
       )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS public_sync_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        requests_used INTEGER NOT NULL DEFAULT 0,
+        fixtures_seen INTEGER NOT NULL DEFAULT 0,
+        fixtures_mapped INTEGER NOT NULL DEFAULT 0,
+        results_imported INTEGER NOT NULL DEFAULT 0,
+        odds_rows INTEGER NOT NULL DEFAULT 0,
+        quota_remaining INTEGER,
+        message TEXT
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS odds_snapshots (
+        source TEXT NOT NULL,
+        source_url TEXT,
+        fixture_id TEXT NOT NULL,
+        market_id TEXT NOT NULL,
+        selection_id TEXT NOT NULL,
+        bookmaker TEXT NOT NULL,
+        odds REAL NOT NULL,
+        snapshot_kind TEXT NOT NULL,
+        snapshot_at TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(source, fixture_id, market_id, selection_id, bookmaker, snapshot_kind, snapshot_at)
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS result_provenance (
+        fixture_id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        source_url TEXT,
+        source_published_at TEXT,
+        fetched_at TEXT NOT NULL
+      )")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_lineups_fixture ON provider_lineups(provider_fixture_id)")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_absences_fixture ON provider_absences(provider_fixture_id)")
+    DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_odds_fixture_time ON odds_snapshots(fixture_id, snapshot_at)")
   })
   invisible(TRUE)
+}
+
+record_public_sync_run <- function(
+    db_path, source, started_at, status, requests_used = 0L, fixtures_seen = 0L,
+    fixtures_mapped = 0L, results_imported = 0L, odds_rows = 0L,
+    quota_remaining = NA_integer_, message = "") {
+  row <- data.frame(
+    source = as.character(source),
+    started_at = format(started_at, "%Y-%m-%dT%H:%M:%S%z"),
+    finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+    status = as.character(status),
+    requests_used = as.integer(requests_used),
+    fixtures_seen = as.integer(fixtures_seen),
+    fixtures_mapped = as.integer(fixtures_mapped),
+    results_imported = as.integer(results_imported),
+    odds_rows = as.integer(odds_rows),
+    quota_remaining = as.integer(quota_remaining),
+    message = as.character(message),
+    stringsAsFactors = FALSE
+  )
+  with_store(db_path, function(con) DBI::dbAppendTable(con, "public_sync_runs", row))
+  invisible(row)
+}
+
+latest_public_sync_run <- function(db_path, source = NULL) {
+  with_store(db_path, function(con) {
+    if (is.null(source)) {
+      DBI::dbGetQuery(con, "SELECT * FROM public_sync_runs ORDER BY id DESC LIMIT 1")
+    } else {
+      DBI::dbGetQuery(
+        con, "SELECT * FROM public_sync_runs WHERE source = ? ORDER BY id DESC LIMIT 1",
+        params = list(as.character(source))
+      )
+    }
+  }) |>
+    tibble::as_tibble()
+}
+
+store_odds_snapshots <- function(rows, db_path) {
+  if (nrow(rows) == 0) return(0L)
+  required <- c(
+    "source", "source_url", "fixture_id", "market_id", "selection_id", "bookmaker",
+    "odds", "snapshot_kind", "snapshot_at", "fetched_at"
+  )
+  missing <- setdiff(required, names(rows))
+  if (length(missing) > 0) stop("Oran kaydında eksik alanlar: ", paste(missing, collapse = ", "))
+  clean <- rows |>
+    dplyr::transmute(
+      source = as.character(source), source_url = as.character(source_url),
+      fixture_id = as.character(fixture_id), market_id = as.character(market_id),
+      selection_id = as.character(selection_id), bookmaker = as.character(bookmaker),
+      odds = as.numeric(odds), snapshot_kind = as.character(snapshot_kind),
+      snapshot_at = as.character(snapshot_at), fetched_at = as.character(fetched_at)
+    )
+  if (any(!is.finite(clean$odds)) || any(clean$odds <= 1)) stop("Ondalık oranlar 1'den büyük olmalı.")
+  with_store(db_path, function(con) {
+    DBI::dbWithTransaction(con, for (i in seq_len(nrow(clean))) {
+      DBI::dbExecute(con, "
+        INSERT INTO odds_snapshots (
+          source, source_url, fixture_id, market_id, selection_id, bookmaker,
+          odds, snapshot_kind, snapshot_at, fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source, fixture_id, market_id, selection_id, bookmaker, snapshot_kind, snapshot_at)
+        DO UPDATE SET odds=excluded.odds, source_url=excluded.source_url, fetched_at=excluded.fetched_at",
+        params = unname(as.list(clean[i, ]))
+      )
+    })
+  })
+  nrow(clean)
+}
+
+latest_odds_rows <- function(db_path, fixture_id) {
+  with_store(db_path, function(con) DBI::dbGetQuery(con, "
+    SELECT * FROM odds_snapshots
+    WHERE fixture_id = ? AND snapshot_at = (
+      SELECT MAX(snapshot_at) FROM odds_snapshots WHERE fixture_id = ?
+    )
+    ORDER BY market_id, bookmaker, selection_id",
+    params = list(as.character(fixture_id), as.character(fixture_id)))) |>
+    tibble::as_tibble()
+}
+
+store_result_provenance <- function(rows, db_path) {
+  if (nrow(rows) == 0) return(0L)
+  with_store(db_path, function(con) {
+    DBI::dbWithTransaction(con, for (i in seq_len(nrow(rows))) {
+      DBI::dbExecute(con, "
+        INSERT INTO result_provenance (fixture_id, source, source_url, source_published_at, fetched_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(fixture_id) DO UPDATE SET
+          source=excluded.source, source_url=excluded.source_url,
+          source_published_at=excluded.source_published_at, fetched_at=excluded.fetched_at",
+        params = unname(as.list(rows[i, c("fixture_id", "source", "source_url", "source_published_at", "fetched_at")]))
+      )
+    })
+  })
+  nrow(rows)
 }
 
 store_provider_fixtures <- function(rows, db_path) {
@@ -207,14 +342,22 @@ provider_fixture_context <- function(internal_fixture_id, db_path) {
 automation_health <- function(db_path) {
   with_store(db_path, function(con) {
     last_run <- DBI::dbGetQuery(con, "SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1")
+    last_public_run <- DBI::dbGetQuery(con, "SELECT * FROM public_sync_runs ORDER BY id DESC LIMIT 1")
     counts <- DBI::dbGetQuery(con, "
       SELECT
         (SELECT COUNT(*) FROM provider_fixtures) AS fixtures,
+        (SELECT COUNT(DISTINCT fixture_id) FROM odds_snapshots) AS odds_matches,
+        (SELECT COUNT(*) FROM odds_snapshots) AS odds_rows,
         (SELECT COUNT(DISTINCT provider_fixture_id) FROM provider_lineups WHERE is_starting = 1) AS lineup_matches,
         (SELECT COUNT(*) FROM provider_absences) AS absences,
         (SELECT COUNT(*) FROM postmatch_results) AS results,
+        (SELECT COUNT(*) FROM result_provenance) AS sourced_results,
         (SELECT COUNT(DISTINCT provider_fixture_id) FROM provider_payloads WHERE payload_kind IN ('statistics','events','players')) AS detailed_matches")
-    list(last_run = tibble::as_tibble(last_run), counts = tibble::as_tibble(counts))
+    list(
+      last_run = tibble::as_tibble(last_run),
+      last_public_run = tibble::as_tibble(last_public_run),
+      counts = tibble::as_tibble(counts)
+    )
   })
 }
 
@@ -285,6 +428,15 @@ validate_postmatch_upload <- function(df) {
 }
 
 import_postmatch_results <- function(df, db_path) {
+  fetched_default <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  provenance <- data.frame(
+    fixture_id = as.character(df$fixture_id),
+    source = if ("result_source" %in% names(df)) as.character(df$result_source) else "Elle / CSV",
+    source_url = if ("source_url" %in% names(df)) as.character(df$source_url) else "",
+    source_published_at = if ("source_published_at" %in% names(df)) as.character(df$source_published_at) else "",
+    fetched_at = if ("fetched_at" %in% names(df)) as.character(df$fetched_at) else fetched_default,
+    stringsAsFactors = FALSE
+  )
   clean <- validate_postmatch_upload(df)
   if (exists("validate_super_lig_results", mode = "function")) clean <- validate_super_lig_results(clean)
   with_store(db_path, function(con) {
@@ -309,6 +461,7 @@ import_postmatch_results <- function(df, db_path) {
       }
     })
   })
+  store_result_provenance(provenance, db_path)
   nrow(clean)
 }
 
@@ -385,6 +538,9 @@ parse_model_timestamp <- function(values, date_at_end_of_day = FALSE) {
 eligible_prediction_results <- function(db_path) {
   with_store(db_path, function(con) {
     results <- DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date")
+    provenance <- DBI::dbGetQuery(con, "SELECT fixture_id, source AS result_source FROM result_provenance")
+    if (nrow(provenance) > 0) results <- dplyr::left_join(results, provenance, by = "fixture_id")
+    if (!"result_source" %in% names(results)) results$result_source <- rep(NA_character_, nrow(results))
     analyses <- DBI::dbGetQuery(con, "SELECT * FROM analyses ORDER BY created_at")
     if (nrow(results) == 0 || nrow(analyses) == 0) return(tibble::tibble())
     analyses |>
@@ -437,6 +593,7 @@ prediction_result_history <- function(db_path, limit = 20L) {
       Doğru = ifelse(correct, "Evet", "Hayır"),
       `Gerçeğe verilen olasılık` = scales::percent(p_actual, accuracy = .1),
       Brier = format(round(brier, 3), nsmall = 3),
+      Kaynak = dplyr::coalesce(result_source, "Bilinmiyor"),
       `Tahmin zamanı` = format(analysis_time, "%d.%m.%Y %H:%M")
     )
 }

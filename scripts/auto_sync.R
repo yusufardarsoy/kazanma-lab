@@ -13,16 +13,11 @@ source("R/super_lig_data.R", encoding = "UTF-8")
 source("R/model_engine.R", encoding = "UTF-8")
 source("R/storage.R", encoding = "UTF-8")
 source("R/provider_api_football.R", encoding = "UTF-8")
+source("R/provider_public_data.R", encoding = "UTF-8")
+source("R/provider_the_odds_api.R", encoding = "UTF-8")
+source("R/sync_orchestrator.R", encoding = "UTF-8")
 
 config <- read_app_config()
 initialize_store(config$db_path)
-if (!api_football_enabled(config)) {
-  message("FOOTBALL_API_KEY ayarlı değil. Veri görevi değişiklik yapmadan kapandı.")
-  quit(save = "no", status = 2L)
-}
-
-result <- auto_sync_league(config)
-message(
-  "Senkronizasyon tamamlandı: ", result$fixtures_mapped, " fikstür eşleşti, ",
-  result$results, " sonuç hafızada, ", result$requests_used, " API isteği kullanıldı."
-)
+result <- auto_sync_all_sources(config)
+message("Senkronizasyon tamamlandı: ", result$results, " sonuç, ", result$odds_rows, " oran satırı işlendi. ", result$message)

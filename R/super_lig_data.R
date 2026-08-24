@@ -87,13 +87,34 @@ super_lig_fixtures <- function() {
     )
   }
 
+  public_cache_path <- file.path(SUPER_LIG_PROJECT_ROOT, "data", "cache", "public_fixtures.csv")
+  public_schedule <- if (file.exists(public_cache_path)) {
+    utils::read.csv(public_cache_path, check.names = FALSE, stringsAsFactors = FALSE, fileEncoding = "UTF-8") |>
+      tibble::as_tibble() |>
+      dplyr::transmute(
+        fixture_id = as.character(internal_fixture_id),
+        public_kickoff_text = as.character(kickoff),
+        public_status = as.character(status_short),
+        public_source = as.character(source),
+        public_source_url = as.character(source_url),
+        public_synced_at = as.character(last_synced_at)
+      )
+  } else {
+    tibble::tibble(
+      fixture_id = character(), public_kickoff_text = character(), public_status = character(),
+      public_source = character(), public_source_url = character(), public_synced_at = character()
+    )
+  }
+
   raw <- raw |>
     dplyr::left_join(schedule, by = "fixture_id") |>
+    dplyr::left_join(public_schedule, by = "fixture_id") |>
     dplyr::left_join(provider_schedule, by = "fixture_id") |>
     dplyr::mutate(
       provider_kickoff = as.POSIXct(provider_kickoff_text, format = "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
+      public_kickoff = as.POSIXct(public_kickoff_text, format = "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
       curated_kickoff = as.POSIXct(kickoff_text, tz = "Europe/Istanbul"),
-      final_kickoff = dplyr::coalesce(provider_kickoff, curated_kickoff),
+      final_kickoff = dplyr::coalesce(provider_kickoff, public_kickoff, curated_kickoff),
       final_venue = dplyr::coalesce(dplyr::na_if(provider_venue, ""), venue),
       home_xg_adjustment = dplyr::if_else(fixture_id == "317800", -0.10, 0),
       away_xg_adjustment = dplyr::if_else(fixture_id == "317800", 0.08, 0),
@@ -121,11 +142,20 @@ super_lig_fixtures <- function() {
       home_xg_adjustment,
       away_xg_adjustment,
       adjustment_note,
-      data_mode = dplyr::if_else(!is.na(provider_fixture_id), "provider_schedule", "curated_prior"),
-      fixture_source = dplyr::if_else(!is.na(provider_fixture_id), "API-Football + TFF eşleme", "TFF"),
+      data_mode = dplyr::case_when(
+        !is.na(provider_fixture_id) ~ "provider_schedule",
+        !is.na(public_kickoff_text) ~ "public_schedule",
+        TRUE ~ "curated_prior"
+      ),
+      fixture_source = dplyr::case_when(
+        !is.na(provider_fixture_id) ~ "API-Football + TFF eşleme",
+        !is.na(public_kickoff_text) ~ paste0(public_source, " + TFF eşleme"),
+        TRUE ~ "TFF"
+      ),
       provider_fixture_id,
-      provider_status,
-      provider_synced_at
+      provider_status = dplyr::coalesce(provider_status, public_status),
+      provider_synced_at = dplyr::coalesce(provider_synced_at, public_synced_at),
+      public_source_url
     ) |>
     dplyr::arrange(dplyr::desc(fixture_id == "317800"), round, kickoff, fixture_id)
 }

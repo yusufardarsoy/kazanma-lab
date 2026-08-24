@@ -149,18 +149,68 @@ model_market_probabilities <- function(prediction) {
   dplyr::bind_rows(core, exact, players)
 }
 
-validate_odds_snapshot <- function(odds = kocaeli_amed_odds()) {
+validate_odds_snapshot <- function(odds = kocaeli_amed_odds(), fixture_id = NULL) {
   required <- c("fixture_id", "market_id", "selection_id", "odds", "exhaustive", "active")
   if (!all(required %in% names(odds))) stop("Oran görüntüsü gerekli alanları taşımıyor.")
   if (any(!is.finite(odds$odds)) || any(odds$odds <= 1)) stop("Tüm ondalık oranlar 1'den büyük olmalı.")
   if (anyDuplicated(paste(odds$market_id, odds$selection_id))) stop("Aynı market seçeneği birden çok kez girilmiş.")
-  if (any(odds$fixture_id != ODDS_FIXTURE_ID)) stop("Oran görüntüsü başka bir maça karışmış.")
+  if (length(unique(odds$fixture_id)) != 1L) stop("Oran görüntüsüne başka bir maç karışmış.")
+  if (!is.null(fixture_id) && any(as.character(odds$fixture_id) != as.character(fixture_id))) {
+    stop("Oran görüntüsü seçili maçla eşleşmiyor.")
+  }
   invisible(TRUE)
 }
 
-compare_odds <- function(prediction, odds = kocaeli_amed_odds()) {
-  if (!identical(as.character(prediction$fixture$fixture_id[[1]]), ODDS_FIXTURE_ID)) return(tibble::tibble())
-  validate_odds_snapshot(odds)
+stored_odds_for_prediction <- function(prediction, db_path) {
+  fixture_id <- as.character(prediction$fixture$fixture_id[[1]])
+  rows <- latest_odds_rows(db_path, fixture_id)
+  if (nrow(rows) == 0) {
+    if (identical(fixture_id, ODDS_FIXTURE_ID)) return(kocaeli_amed_odds())
+    return(tibble::tibble())
+  }
+  labels <- tibble::tribble(
+    ~market_id, ~selection_id, ~market, ~selection,
+    "result", "home", "Maç sonucu", prediction$home$team,
+    "result", "draw", "Maç sonucu", "Beraberlik",
+    "result", "away", "Maç sonucu", prediction$away$team,
+    "ou_2_5", "under", "Toplam gol 2,5", "2,5 alt",
+    "ou_2_5", "over", "Toplam gol 2,5", "2,5 üst"
+  )
+  snapshot_time <- max(parse_model_timestamp(rows$snapshot_at), na.rm = TRUE)
+  age_hours <- as.numeric(difftime(Sys.time(), snapshot_time, units = "hours"))
+  rows |>
+    dplyr::group_by(fixture_id, market_id, selection_id) |>
+    dplyr::summarise(
+      odds = stats::median(odds, na.rm = TRUE),
+      source = paste(sort(unique(source)), collapse = " + "),
+      bookmaker_count = dplyr::n_distinct(bookmaker),
+      snapshot_at_text = max(snapshot_at),
+      .groups = "drop"
+    ) |>
+    dplyr::left_join(labels, by = c("market_id", "selection_id")) |>
+    dplyr::filter(!is.na(market)) |>
+    dplyr::mutate(
+      exhaustive = TRUE,
+      risk = "Orta",
+      reliability = dplyr::if_else(age_hours <= 48, .84, .74),
+      active = age_hours <= 168,
+      note = paste0(bookmaker_count, " fiyatın medyanı · ", round(age_hours, 1), " saatlik görüntü"),
+      snapshot_at = parse_model_timestamp(snapshot_at_text)
+    ) |>
+    dplyr::select(
+      market_id, market, selection_id, selection, odds, exhaustive, risk,
+      reliability, active, note, fixture_id, snapshot_at, source
+    )
+}
+
+compare_odds <- function(prediction, odds = NULL) {
+  fixture_id <- as.character(prediction$fixture$fixture_id[[1]])
+  if (is.null(odds)) {
+    if (!identical(fixture_id, ODDS_FIXTURE_ID)) return(tibble::tibble())
+    odds <- kocaeli_amed_odds()
+  }
+  if (nrow(odds) == 0) return(tibble::tibble())
+  validate_odds_snapshot(odds, fixture_id)
   probs <- model_market_probabilities(prediction)
   odds |>
     dplyr::left_join(probs, by = c("market_id", "selection_id")) |>

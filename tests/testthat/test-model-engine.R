@@ -54,7 +54,7 @@ test_that("every scheduled Super Lig match produces a valid prediction", {
     expect_equal(nrow(prediction$home_xi), 11)
     expect_equal(nrow(prediction$away_xi), 11)
     expect_false(prediction$is_demo)
-    expect_equal(prediction$data_mode, "curated_prior")
+    expect_true(prediction$data_mode %in% c("curated_prior", "public_schedule", "provider_schedule"))
   }
 })
 

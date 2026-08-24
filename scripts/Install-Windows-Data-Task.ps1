@@ -6,9 +6,10 @@ if (-not (Test-Path -LiteralPath $runner)) { throw "Veri çalıştırıcısı bu
 $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
   -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $runner)
-$matchWindow = New-ScheduledTaskTrigger -Daily -At "16:00"
-$matchWindow.Repetition.Interval = "PT30M"
-$matchWindow.Repetition.Duration = "PT8H"
+$matchWindow = 0..16 | ForEach-Object {
+  $time = [datetime]::Today.AddHours(16).AddMinutes($_ * 30)
+  New-ScheduledTaskTrigger -Daily -At $time
+}
 $dailyCatchup = New-ScheduledTaskTrigger -Daily -At "10:00"
 $atLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
@@ -21,10 +22,10 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
-  -Trigger @($matchWindow, $dailyCatchup, $atLogon) `
+  -Trigger (@($matchWindow) + @($dailyCatchup, $atLogon)) `
   -Settings $settings `
   -Principal $principal `
-  -Description "Kazanma Lab Süper Lig fikstür, ilk 11, eksik ve maç-sonu verilerini ücretsiz API kotası içinde eşitler." `
+  -Description "Kazanma Lab Süper Lig tarih, oran, ilk 11, eksik ve maç-sonu verilerini ücretsiz kaynaklardan eşitler." `
   -Force | Out-Null
 
 Start-ScheduledTask -TaskName $taskName

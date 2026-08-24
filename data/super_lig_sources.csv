@@ -1,4 +1,7 @@
 component,source,published_or_accessed,url,note
+2026-27 results and odds,Football-Data.co.uk,2026-08-24,https://www.football-data.co.uk/turkeym.php,"Free published CSV; results, match statistics and opening/closing market averages"
+published fixture dates and odds,Football-Data.co.uk,2026-08-24,https://www.football-data.co.uk/matches.php,"Free published fixture CSV; London times are converted to Europe/Istanbul"
+current odds and recent scores,The Odds API,2026-08-24,https://the-odds-api.com/sports-odds-data/sports-apis.html,"Optional free-key source; Turkey Super League sport key; 8-hour quota guard"
 2026-27 fixture,Türkiye Futbol Federasyonu,2026-08-24,https://www.tff.org/default.aspx?pageID=198,"League membership, round pairings and official schedule"
 2025-26 final table,Türkiye Futbol Federasyonu,2026-08-24,https://www.tff.org/default.aspx?pageID=1768,"Matches, points, goals for and goals against"
 2026-27 team values,Transfermarkt,2026-08-24,https://www.transfermarkt.com.tr/super-lig/teilnehmer/pokalwettbewerb/TR1/saison_id/2026,"Squad market values used only as a weak prior"
