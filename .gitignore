@@ -9,4 +9,5 @@ renv/staging/
 data/*.sqlite
 data/*.sqlite-*
 data/cache/
+data/*.log
 rsconnect/
