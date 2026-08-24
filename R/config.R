@@ -1,4 +1,20 @@
+load_project_env <- function(path = ".env") {
+  if (!file.exists(path)) return(invisible(FALSE))
+  lines <- readLines(path, warn = FALSE, encoding = "UTF-8")
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines) & !startsWith(lines, "#") & grepl("=", lines, fixed = TRUE)]
+  for (line in lines) {
+    split_at <- regexpr("=", line, fixed = TRUE)[[1]]
+    key <- trimws(substr(line, 1, split_at - 1))
+    value <- trimws(substr(line, split_at + 1, nchar(line)))
+    value <- sub('^(["\'])(.*)\\1$', "\\2", value)
+    if (nzchar(key) && !nzchar(Sys.getenv(key, ""))) do.call(Sys.setenv, stats::setNames(list(value), key))
+  }
+  invisible(TRUE)
+}
+
 read_app_config <- function() {
+  load_project_env()
   env <- Sys.getenv("APP_ENV", "development")
   password <- Sys.getenv("APP_PASSWORD", "")
   password_hash <- Sys.getenv("APP_PASSWORD_HASH", "")
@@ -15,6 +31,8 @@ read_app_config <- function() {
     db_path = Sys.getenv("KAZANMA_DB_PATH", "data/kazanma.sqlite"),
     football_api_key = Sys.getenv("FOOTBALL_API_KEY", ""),
     football_api_base = Sys.getenv("FOOTBALL_API_BASE", "https://v3.football.api-sports.io"),
+    cache_dir = Sys.getenv("KAZANMA_CACHE_DIR", "data/cache"),
+    sync_detail_budget = as.integer(Sys.getenv("KAZANMA_SYNC_DETAIL_BUDGET", "8")),
     # Uygulama bilinçli olarak yalnızca 2026-27 Türkiye Süper Ligi'ne kilitlidir.
     league_id = 203L,
     season = 2026L,

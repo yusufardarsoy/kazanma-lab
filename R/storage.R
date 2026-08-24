@@ -36,8 +36,192 @@ initialize_store <- function(db_path) {
         away_cards INTEGER,
         imported_at TEXT NOT NULL
       )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS provider_fixtures (
+        provider_fixture_id TEXT PRIMARY KEY,
+        internal_fixture_id TEXT NOT NULL UNIQUE,
+        round INTEGER,
+        kickoff TEXT NOT NULL,
+        status_short TEXT,
+        status_long TEXT,
+        venue TEXT,
+        home_team_provider TEXT NOT NULL,
+        away_team_provider TEXT NOT NULL,
+        home_goals INTEGER,
+        away_goals INTEGER,
+        last_synced_at TEXT NOT NULL
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS provider_lineups (
+        provider_fixture_id TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        player_id TEXT NOT NULL,
+        player TEXT NOT NULL,
+        position TEXT NOT NULL,
+        shirt_number INTEGER,
+        grid TEXT,
+        is_starting INTEGER NOT NULL,
+        formation TEXT,
+        coach TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(provider_fixture_id, team_id, player_id, is_starting)
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS provider_absences (
+        provider_fixture_id TEXT NOT NULL,
+        team_id INTEGER NOT NULL,
+        player_id TEXT NOT NULL,
+        player TEXT NOT NULL,
+        absence_type TEXT,
+        reason TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(provider_fixture_id, team_id, player_id)
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS provider_payloads (
+        provider_fixture_id TEXT NOT NULL,
+        payload_kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(provider_fixture_id, payload_kind)
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS sync_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        requests_used INTEGER NOT NULL,
+        fixtures_seen INTEGER NOT NULL,
+        fixtures_mapped INTEGER NOT NULL,
+        message TEXT
+      )")
+    DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_lineups_fixture ON provider_lineups(provider_fixture_id)")
+    DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_absences_fixture ON provider_absences(provider_fixture_id)")
   })
   invisible(TRUE)
+}
+
+store_provider_fixtures <- function(rows, db_path) {
+  if (nrow(rows) == 0) return(0L)
+  required <- c(
+    "provider_fixture_id", "internal_fixture_id", "round", "kickoff", "status_short", "status_long",
+    "venue", "home_team_provider", "away_team_provider", "home_goals", "away_goals", "last_synced_at"
+  )
+  rows <- as.data.frame(rows[, required], stringsAsFactors = FALSE)
+  with_store(db_path, function(con) {
+    DBI::dbWithTransaction(con, for (i in seq_len(nrow(rows))) {
+      DBI::dbExecute(con, "
+        INSERT INTO provider_fixtures (
+          provider_fixture_id, internal_fixture_id, round, kickoff, status_short, status_long, venue,
+          home_team_provider, away_team_provider, home_goals, away_goals, last_synced_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(provider_fixture_id) DO UPDATE SET
+          internal_fixture_id=excluded.internal_fixture_id, round=excluded.round, kickoff=excluded.kickoff,
+          status_short=excluded.status_short, status_long=excluded.status_long, venue=excluded.venue,
+          home_team_provider=excluded.home_team_provider, away_team_provider=excluded.away_team_provider,
+          home_goals=excluded.home_goals, away_goals=excluded.away_goals, last_synced_at=excluded.last_synced_at",
+        params = unname(as.list(rows[i, ]))
+      )
+    })
+  })
+  nrow(rows)
+}
+
+replace_provider_snapshot <- function(table, provider_fixture_id, rows, db_path) {
+  if (!table %in% c("provider_lineups", "provider_absences")) stop("Geçersiz snapshot tablosu.")
+  with_store(db_path, function(con) {
+    DBI::dbWithTransaction(con, {
+      DBI::dbExecute(con, paste0("DELETE FROM ", table, " WHERE provider_fixture_id = ?"), params = list(as.character(provider_fixture_id)))
+      if (nrow(rows) > 0) DBI::dbAppendTable(con, table, as.data.frame(rows, stringsAsFactors = FALSE))
+    })
+  })
+  nrow(rows)
+}
+
+store_provider_payload <- function(provider_fixture_id, kind, payload, db_path, fetched_at = Sys.time()) {
+  row <- list(
+    as.character(provider_fixture_id), as.character(kind),
+    jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null", digits = NA),
+    format(fetched_at, "%Y-%m-%dT%H:%M:%S%z")
+  )
+  with_store(db_path, function(con) DBI::dbExecute(con, "
+    INSERT INTO provider_payloads (provider_fixture_id, payload_kind, payload_json, fetched_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(provider_fixture_id, payload_kind) DO UPDATE SET
+      payload_json=excluded.payload_json, fetched_at=excluded.fetched_at", params = row))
+  invisible(TRUE)
+}
+
+provider_payload_fetched_at <- function(provider_fixture_id, kind, db_path) {
+  value <- with_store(db_path, function(con) DBI::dbGetQuery(con, "
+    SELECT fetched_at FROM provider_payloads WHERE provider_fixture_id = ? AND payload_kind = ?",
+    params = list(as.character(provider_fixture_id), as.character(kind))))
+  if (nrow(value) == 0) return(as.POSIXct(NA))
+  parse_model_timestamp(value$fetched_at)[[1]]
+}
+
+read_provider_payload <- function(provider_fixture_id, kind, db_path) {
+  value <- with_store(db_path, function(con) DBI::dbGetQuery(con, "
+    SELECT payload_json FROM provider_payloads WHERE provider_fixture_id = ? AND payload_kind = ?",
+    params = list(as.character(provider_fixture_id), as.character(kind))))
+  if (nrow(value) == 0) return(NULL)
+  jsonlite::fromJSON(value$payload_json[[1]], simplifyVector = FALSE)
+}
+
+sync_requests_last_24h <- function(db_path, now = Sys.time()) {
+  runs <- with_store(db_path, function(con) DBI::dbGetQuery(con, "SELECT started_at, requests_used FROM sync_runs"))
+  if (nrow(runs) == 0) return(0L)
+  started <- parse_model_timestamp(runs$started_at)
+  as.integer(sum(runs$requests_used[!is.na(started) & started >= now - 24 * 60 * 60], na.rm = TRUE))
+}
+
+record_sync_run <- function(db_path, started_at, status, requests_used, fixtures_seen, fixtures_mapped, message = "") {
+  row <- data.frame(
+    started_at = format(started_at, "%Y-%m-%dT%H:%M:%S%z"),
+    finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+    status = status,
+    requests_used = as.integer(requests_used),
+    fixtures_seen = as.integer(fixtures_seen),
+    fixtures_mapped = as.integer(fixtures_mapped),
+    message = as.character(message),
+    stringsAsFactors = FALSE
+  )
+  with_store(db_path, function(con) DBI::dbAppendTable(con, "sync_runs", row))
+  invisible(row)
+}
+
+provider_fixture_context <- function(internal_fixture_id, db_path) {
+  with_store(db_path, function(con) {
+    fixture <- DBI::dbGetQuery(con, "SELECT * FROM provider_fixtures WHERE internal_fixture_id = ?", params = list(as.character(internal_fixture_id)))
+    if (nrow(fixture) == 0) return(list(fixture = tibble::tibble(), lineups = tibble::tibble(), absences = tibble::tibble()))
+    provider_id <- fixture$provider_fixture_id[[1]]
+    list(
+      fixture = tibble::as_tibble(fixture),
+      lineups = tibble::as_tibble(DBI::dbGetQuery(con, "SELECT * FROM provider_lineups WHERE provider_fixture_id = ?", params = list(provider_id))),
+      absences = tibble::as_tibble(DBI::dbGetQuery(con, "SELECT * FROM provider_absences WHERE provider_fixture_id = ?", params = list(provider_id)))
+    )
+  })
+}
+
+automation_health <- function(db_path) {
+  with_store(db_path, function(con) {
+    last_run <- DBI::dbGetQuery(con, "SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1")
+    counts <- DBI::dbGetQuery(con, "
+      SELECT
+        (SELECT COUNT(*) FROM provider_fixtures) AS fixtures,
+        (SELECT COUNT(DISTINCT provider_fixture_id) FROM provider_lineups WHERE is_starting = 1) AS lineup_matches,
+        (SELECT COUNT(*) FROM provider_absences) AS absences,
+        (SELECT COUNT(*) FROM postmatch_results) AS results,
+        (SELECT COUNT(DISTINCT provider_fixture_id) FROM provider_payloads WHERE payload_kind IN ('statistics','events','players')) AS detailed_matches")
+    list(last_run = tibble::as_tibble(last_run), counts = tibble::as_tibble(counts))
+  })
+}
+
+analysis_exists_for_fixture <- function(fixture_id, db_path) {
+  with_store(db_path, function(con) {
+    DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM analyses WHERE fixture_id = ?", params = list(as.character(fixture_id)))$n[[1]] > 0
+  })
 }
 
 record_analysis <- function(prediction, db_path) {
@@ -114,9 +298,12 @@ import_postmatch_results <- function(df, db_path) {
           ON CONFLICT(fixture_id) DO UPDATE SET
             match_date=excluded.match_date, home_team=excluded.home_team,
             away_team=excluded.away_team, home_goals=excluded.home_goals,
-            away_goals=excluded.away_goals, home_xg=excluded.home_xg,
-            away_xg=excluded.away_xg, home_cards=excluded.home_cards,
-            away_cards=excluded.away_cards, imported_at=excluded.imported_at",
+            away_goals=excluded.away_goals,
+            home_xg=COALESCE(excluded.home_xg, postmatch_results.home_xg),
+            away_xg=COALESCE(excluded.away_xg, postmatch_results.away_xg),
+            home_cards=COALESCE(excluded.home_cards, postmatch_results.home_cards),
+            away_cards=COALESCE(excluded.away_cards, postmatch_results.away_cards),
+            imported_at=excluded.imported_at",
           params = unname(as.list(clean[i, ]))
         )
       }

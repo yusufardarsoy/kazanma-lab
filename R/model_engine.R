@@ -74,6 +74,15 @@ select_probable_xi <- function(players) {
     dplyr::arrange(factor(position, levels = c("GK", "DEF", "MID", "FWD")), dplyr::desc(start_probability))
 }
 
+select_match_xi <- function(players) {
+  if ("identity_status" %in% names(players) && nrow(players) == 11L && all(players$identity_status == "official_lineup")) {
+    return(players |>
+      dplyr::mutate(start_probability = 1, position_rank = dplyr::row_number()) |>
+      dplyr::arrange(factor(position, levels = c("GK", "DEF", "MID", "FWD"))))
+  }
+  select_probable_xi(players)
+}
+
 project_player_markets <- function(players, team_xg, opponent_discipline) {
   players |>
     dplyr::mutate(
@@ -148,6 +157,8 @@ build_prediction <- function(data) {
     team_value(away, "profile_confidence", 45)
   )) / 100
   data_mode <- as.character(fixture$data_mode[[1]])
+  identity_status <- if ("identity_status" %in% names(data$players)) data$players$identity_status else rep("named_probable", nrow(data$players))
+  official_lineup_teams <- length(unique(data$players$team_id[identity_status == "official_lineup"]))
 
   list(
     fixture = fixture,
@@ -157,18 +168,25 @@ build_prediction <- function(data) {
     score_matrix = score_matrix,
     outcomes = outcomes,
     likely_score = likely_score,
-    home_xi = select_probable_xi(home_players),
-    away_xi = select_probable_xi(away_players),
+    home_xi = select_match_xi(home_players),
+    away_xi = select_match_xi(away_players),
     player_markets = dplyr::bind_rows(home_markets, away_markets) |>
       dplyr::left_join(data$teams |> dplyr::select(team_id, team), by = "team_id"),
     styles = style_long(home, away),
     tactical_notes = unique(c(tactical_notes(home, away), team_text(fixture, "adjustment_note", ""))) |> purrr::discard(~ !nzchar(.x)) |> utils::head(5L),
     model_version = "superlig-poisson-prior-0.4",
-    confidence = clamp(.34 + .34 * profile_confidence + min(.12, (data$learning_matches %||% 0L) * .006), .42, .80),
+    confidence = clamp(
+      .34 + .34 * profile_confidence + min(.12, (data$learning_matches %||% 0L) * .006) +
+        .03 * official_lineup_teams,
+      .42, .84
+    ),
     learning_matches = data$learning_matches %||% 0L,
     generated_at = Sys.time(),
     is_demo = identical(data_mode, "demo"),
     data_mode = data_mode,
-    lineup_role_based = all(c("identity_status") %in% names(data$players)) && all(data$players$identity_status == "role_prior")
+    lineup_role_based = all(c("identity_status") %in% names(data$players)) && all(data$players$identity_status == "role_prior"),
+    official_lineup_teams = official_lineup_teams,
+    availability = data$availability %||% tibble::tibble(),
+    provider_status = data$provider_status %||% NULL
   )
 }

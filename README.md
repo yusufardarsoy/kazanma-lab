@@ -22,7 +22,9 @@ Kazanma Lab, “Moneyball / Kazanma Sanatı” yaklaşımını futbol maçların
 - Her analiz anını SQLite'a kaydeden model hafızası
 - Ekrandan gerçek skor girişi veya toplu CSV içe aktarma
 - İleriye dönük 1X2 isabeti, Brier skoru ve log loss; sonuçtan sonra üretilen tahminleri ölçümden çıkaran zaman kontrolü
-- API-Football için fikstür, tahmin, resmi ilk 11 ve sakatlık/ceza snapshot bağlantısı
+- API-Football resmî API'sinden fikstür, resmî ilk 11, sakatlık/ceza ve maç-sonu veri bağlantısı
+- Site kapalıyken çalışan Windows görevi; açılışta geriye dönük eksik tamamlama
+- Aynı maçı çoğaltmayan SQLite kayıtları ve ücretsiz kota için 24 saatlik 90 istek güvenlik freni
 - Docker ve GitHub Actions hazırlığı
 
 ## Ekranlar
@@ -46,6 +48,8 @@ install.packages(c(
 ))
 shiny::runApp()
 ```
+
+Kurulum tamamlandıktan sonra en kolay yol proje kökündeki **`Kazanma-Lab-Ac.cmd`** dosyasına çift tıklamaktır. Başlatıcı önce kaçırılan verileri tamamlamayı dener, sonra siteyi `http://127.0.0.1:3838` adresinde açar. Siteyi durdurmak için açılan siyah pencerede `Ctrl+C` kullan.
 
 Varsayılan yerel geliştirme girişi `arda / kazanma-lab`'dır. Bu sadece geliştirme kolaylığı içindir.
 
@@ -88,6 +92,12 @@ Uygulama `http://localhost:3838` adresinde açılır. `kazanma-data` volume'u an
 
 ## Canlı veri bağlantısı
 
+Bu proje sayfa kazımaz. Sağlayıcının yayımladığı resmî, belgelenmiş API'yi ve kullanım koşullarını kullanır. API-Football ücretsiz planda ödeme gerektirmeden 100 istek/gün ve 10 istek/dakika verir; kapsam endpoint'i ilgili sezon için ilk 11, eksik ve istatistik desteğini onaylamazsa motor o veri türünü çekmez. Kullanım koşullarına ve kota sınırlarına uymak kullanıcı sorumluluğundadır; bu açıklama hukuki görüş değildir.
+
+1. [API-Football](https://dashboard.api-football.com/register) üzerinden ücretsiz hesap açıp anahtarı al.
+2. `.env.example` dosyasını `.env` adıyla kopyala.
+3. `.env` içindeki `FOOTBALL_API_KEY=` satırının sonuna anahtarı yaz. `.env` ve SQLite dosyası GitHub'a gönderilmez.
+
 `.env` veya barındırma servisinin gizli ayarlarında:
 
 ```text
@@ -95,15 +105,34 @@ FOOTBALL_API_KEY=...
 FOOTBALL_TIMEZONE=Europe/Istanbul
 ```
 
-Lig kimliği `203`, sezon da `2026` olarak kodda kilitlidir; ortam değişkeniyle başka lige çevrilemez.
+Lig kimliği `203`, sezon da `2026` olarak kodda kilitlidir; ortam değişkeniyle başka lige çevrilemez. Motor her turda önce bütün sezon fikstürünü tek çağrıyla uzlaştırır. Yaklaşan maçlarda eksikleri, başlama saatine 90 dakika kala resmî ilk 11'i; biten maçlarda skor, olay, takım ve oyuncu istatistiklerini kademeli olarak saklar.
 
-API-Football'da bir fixture ID; fikstür, olay, istatistik, oyuncu performansı, ilk 11, sakatlık ve tahmin verilerini bağlayan ana anahtardır. Resmi ilk 11 çoğu organizasyonda maçtan kısa süre önce gelir; veri yoksa uygulama tahmin durumunu “onaylı” gibi göstermemelidir.
+API-Football'da bir fixture ID; fikstür, olay, istatistik, oyuncu performansı, ilk 11 ve sakatlık verilerini bağlayan ana anahtardır. Sağlayıcı ID'si TFF ID'si sanılmaz; ev/deplasman takımı ve hafta üzerinden iç fikstürde tam bir eşleşme aranır. Eşleşme oranı `%90` altına düşerse hatalı kayıt riskine karşı senkronizasyon durur. Resmî ilk 11 çoğu organizasyonda maçtan 20–40 dakika önce gelir; veri yoksa uygulama “onaylı” göstermez.
 
 Kaynaklar:
 
 - [API-Football başlangıç ve endpoint rehberi](https://www.api-football.com/news/post/how-to-get-started-with-api-football-the-complete-beginners-guide)
 - [API-Football kota ve coverage rehberi](https://www.api-football.com/news/post/how-to-optimize-api-sports-calls-and-quota-usage)
 - [API-Football fiyatlandırma](https://www.api-football.com/pricing)
+- [API-Football kullanım koşulları](https://www.api-football.com/terms)
+
+## Site kapalıyken otomatik kayıt
+
+`.env` anahtarını ekledikten sonra PowerShell'de proje klasöründeyken bir kez şunu çalıştır:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Windows-Data-Task.ps1
+```
+
+`KazanmaLabDataSync` adlı görev şunları yapar:
+
+- Windows oturumu açıldığında bir geriye-dönük tamamlama çalıştırır.
+- Her gün 10:00'da sonuç/fikstür kontrolü yapar.
+- Maç saatlerini kapsamak için 16:00–00:00 arasında 30 dakikada bir çalışır.
+- Site açık olmasa da `data/kazanma.sqlite` içine sonuçları ve ham ayrıntı paketlerini yazar.
+- Bilgisayar kapalı veya uykudaysa o anda veri çekemez; Windows yeniden kullanılabilir olduğunda kaçırılan maçları sezon fikstüründen geriye dönük tamamlar.
+
+Görev kayıtları `data/cache/sync.log` dosyasındadır. SQLite ve önbellek uygulama yeniden başlasa da kalır, ancak özellikle GitHub'a gönderilmez. Kişisel yedek almak istersen site ve görev kapalıyken `data/kazanma.sqlite` dosyasını güvenli bir diske kopyala.
 
 ## Maç-sonu öğrenme döngüsü
 

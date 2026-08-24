@@ -67,8 +67,8 @@ dashboard_ui <- function(config) {
         actionButton("run_analysis", "Tahmini kaydet", class = "btn-primary btn-block"),
         if (api_football_enabled(config)) {
           tagList(
-            textInput("live_fixture_id", "Canlı fixture ID", placeholder = "örn. 1234567"),
-            actionButton("sync_live", "Canlı özeti çek", class = "btn-secondary btn-block")
+            actionButton("sync_live", "Şimdi veri eşitle", class = "btn-secondary btn-block"),
+            div(class = "source-note", span("Ücretsiz kota korunur: görev başına ayrıntı çağrıları sınırlandırılır."))
           )
         } else {
           div(
@@ -150,6 +150,8 @@ lineups_ui <- function() {
       div(class = "panel lineup-panel", uiOutput("home_lineup")),
       div(class = "panel lineup-panel", uiOutput("away_lineup"))
     ),
+    uiOutput("availability_status"),
+    div(class = "panel", h3("Sakatlık ve cezalı listesi"), tableOutput("availability_table")),
     div(class = "panel caveat-panel", strong("Önemli:"), " Resmi ilk 11 genellikle başlama vuruşuna yakın gelir. O ana kadar ekrandaki değerler tahmindir; resmi veri geldiğinde durum “onaylı” olarak değişmelidir.")
   )
 }
@@ -219,6 +221,7 @@ memory_ui <- function() {
       ),
       div(class = "panel", h3("Model sağlık kartı"), tableOutput("scorecard_table"), uiOutput("accuracy_note"))
     ),
+    div(class = "panel", h3("Otomatik veri görevi"), tableOutput("automation_health_table"), uiOutput("automation_note")),
     div(class = "panel", h3("Tahmin — gerçek sonuç karşılaştırması"), tableOutput("comparison_table")),
     div(class = "panel", h3("Son analizler"), tableOutput("history_table")),
     div(

@@ -5,7 +5,10 @@ app_server <- function(input, output, session, config) {
   locked_until <- reactiveVal(as.POSIXct(NA))
   default_fixture_id <- unname(super_lig_fixture_choices()[[1]])
   build_selected_prediction <- function(fixture_id = default_fixture_id) {
-    build_prediction(apply_postmatch_learning(super_lig_match_data(fixture_id), config$db_path))
+    data <- super_lig_match_data(fixture_id) |>
+      apply_provider_context(config$db_path) |>
+      apply_postmatch_learning(config$db_path)
+    build_prediction(data)
   }
   prediction_value <- reactiveVal(build_selected_prediction())
   import_message <- reactiveVal(NULL)
@@ -87,16 +90,12 @@ app_server <- function(input, output, session, config) {
 
   observeEvent(input$sync_live, {
     req(authenticated(), api_football_enabled(config))
-    fixture_id <- trimws(input$live_fixture_id %||% "")
-    if (!nzchar(fixture_id)) {
-      showNotification("Önce fixture ID gir.", type = "warning")
-      return()
-    }
-    showNotification("Canlı maç özeti alınıyor…", duration = 2)
+    showNotification("Süper Lig fikstürü, eksikler ve tamamlanan maçlar eşitleniyor…", duration = 3)
     tryCatch({
-      snapshot <- fetch_fixture_snapshot(config, fixture_id)
+      snapshot <- auto_sync_league(config)
       live_snapshot(snapshot)
-      showNotification("Fikstür, sağlayıcı tahmini, ilk 11 ve eksik listesi alındı.", type = "message")
+      prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
+      showNotification(paste0("Güncelleme tamamlandı: ", snapshot$fixtures_mapped, " maç eşleşti, ", snapshot$requests_used, " API isteği kullanıldı."), type = "message")
     }, error = function(e) {
       showNotification(conditionMessage(e), type = "error", duration = 8)
     })
@@ -116,6 +115,7 @@ app_server <- function(input, output, session, config) {
       span(p$model_version),
       span(dplyr::case_when(
         identical(p$data_mode, "curated_prior") ~ "TFF fikstürü · küratörlü takım öncülleri",
+        identical(p$data_mode, "provider_schedule") ~ "API-Football resmî API · TFF fikstür eşlemesi",
         p$is_demo ~ "Sentetik veri",
         TRUE ~ "Canlı veri"
       ))
@@ -274,15 +274,31 @@ app_server <- function(input, output, session, config) {
     div(
       class = "model-note",
       div(strong("Gol modeli"), span("Poisson + takım gücü + taktik eşleşme")),
-      div(strong("11 modeli"), span(if (p$lineup_role_based) "Güncel kadro yok: rol bazlı öncül" else "Başlama × süre × uygunluk")),
+      div(strong("11 modeli"), span(if (p$official_lineup_teams == 2L) "İki takımın resmî ilk 11'i işlendi" else if (p$lineup_role_based) "Güncel kadro yok: rol bazlı öncül" else "Başlama × süre × uygunluk")),
       div(strong("Oyuncu modeli"), span(if (p$lineup_role_based) "Oyuncu adı değil, rol olasılığı" else "Dakika ağırlıklı olay oranı")),
       div(strong("Öğrenme hafızası"), span(paste(p$learning_matches, "maç sonucu"))),
-      if (!is.null(live_snapshot())) div(strong("Canlı özet"), span("API snapshot hazır; eğitim hattına alınabilir"))
+      if (!is.null(live_snapshot())) div(strong("Otomatik veri"), span("Son eşitleme tamamlandı ve hafızaya işlendi"))
     )
   })
 
   output$home_lineup <- renderUI(lineup_team_ui(prediction()$home, prediction()$home_xi))
   output$away_lineup <- renderUI(lineup_team_ui(prediction()$away, prediction()$away_xi))
+
+  output$availability_status <- renderUI({
+    p <- prediction()
+    if (is.null(p$provider_status)) {
+      return(div(class = "source-note", strong("API verisi bekleniyor"), span("Ücretsiz API anahtarı eklenince eksikler ve resmî ilk 11 otomatik görünecek.")))
+    }
+    status <- if (p$official_lineup_teams == 2L) "İki ilk 11 de resmî" else "Resmî ilk 11 henüz tamamlanmadı"
+    div(class = "source-note", strong(status), span(paste("Sağlayıcı durumu:", p$provider_status$status_long[[1]], "· son eşitleme", p$provider_status$last_synced_at[[1]])))
+  })
+
+  output$availability_table <- renderTable({
+    absences <- prediction()$availability
+    if (nrow(absences) == 0) return(data.frame(Bilgi = "Sağlayıcının bu maç için bildirdiği eksik kaydı yok veya veri henüz yayınlanmadı."))
+    absences |>
+      dplyr::transmute(Takım = team, Oyuncu = player, Durum = dplyr::coalesce(absence_type, "Belirtilmedi"), Neden = dplyr::coalesce(reason, "Belirtilmedi"))
+  }, width = "100%", striped = FALSE, bordered = FALSE)
 
   output$style_cards <- renderUI({
     p <- prediction()
@@ -407,5 +423,24 @@ app_server <- function(input, output, session, config) {
 
   output$accuracy_note <- renderUI({
     div(class = "source-note", strong("Nasıl okunur?"), span(scorecard_interpretation(config$db_path)))
+  })
+
+  output$automation_health_table <- renderTable({
+    health <- automation_health(config$db_path)
+    counts <- health$counts[1, ]
+    data.frame(
+      Gösterge = c("Eşleşen fikstür", "İlk 11 kaydı olan maç", "Eksik oyuncu kaydı", "Kaydedilmiş sonuç", "Ayrıntılı maç-sonu paket"),
+      Değer = as.integer(c(counts$fixtures, counts$lineup_matches, counts$absences, counts$results, counts$detailed_matches)),
+      check.names = FALSE
+    )
+  }, width = "100%")
+
+  output$automation_note <- renderUI({
+    health <- automation_health(config$db_path)
+    if (nrow(health$last_run) == 0) {
+      return(div(class = "source-note", strong("Henüz otomatik eşitleme yok."), span(if (api_football_enabled(config)) "Şimdi eşitle düğmesini kullanabilir veya Windows görevini kurabilirsin." else "Önce ücretsiz API anahtarını .env dosyasına ekle.")))
+    }
+    run <- health$last_run[1, ]
+    div(class = "source-note", strong(if (run$status == "ok") "Son görev başarılı" else "Son görev hata verdi"), span(paste(run$finished_at, "·", run$message)))
   })
 }

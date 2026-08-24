@@ -68,9 +68,33 @@ super_lig_fixtures <- function() {
     "317809", "2026-08-31 21:30:00", "Tüpraş Stadyumu"
   )
 
+  provider_cache_path <- file.path(SUPER_LIG_PROJECT_ROOT, "data", "cache", "provider_fixtures.csv")
+  provider_schedule <- if (file.exists(provider_cache_path)) {
+    utils::read.csv(provider_cache_path, check.names = FALSE, stringsAsFactors = FALSE, fileEncoding = "UTF-8") |>
+      tibble::as_tibble() |>
+      dplyr::transmute(
+        fixture_id = as.character(internal_fixture_id),
+        provider_fixture_id = as.character(provider_fixture_id),
+        provider_kickoff_text = as.character(kickoff),
+        provider_venue = as.character(venue),
+        provider_status = as.character(status_short),
+        provider_synced_at = as.character(last_synced_at)
+      )
+  } else {
+    tibble::tibble(
+      fixture_id = character(), provider_fixture_id = character(), provider_kickoff_text = character(),
+      provider_venue = character(), provider_status = character(), provider_synced_at = character()
+    )
+  }
+
   raw <- raw |>
     dplyr::left_join(schedule, by = "fixture_id") |>
+    dplyr::left_join(provider_schedule, by = "fixture_id") |>
     dplyr::mutate(
+      provider_kickoff = as.POSIXct(provider_kickoff_text, format = "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
+      curated_kickoff = as.POSIXct(kickoff_text, tz = "Europe/Istanbul"),
+      final_kickoff = dplyr::coalesce(provider_kickoff, curated_kickoff),
+      final_venue = dplyr::coalesce(dplyr::na_if(provider_venue, ""), venue),
       home_xg_adjustment = dplyr::if_else(fixture_id == "317800", -0.10, 0),
       away_xg_adjustment = dplyr::if_else(fixture_id == "317800", 0.08, 0),
       adjustment_note = dplyr::if_else(
@@ -89,16 +113,19 @@ super_lig_fixtures <- function() {
       fixture_id,
       competition = SUPER_LIG_COMPETITION,
       round,
-      kickoff = as.POSIXct(kickoff_text, tz = "Europe/Istanbul"),
+      kickoff = final_kickoff,
       home_team_id,
       away_team_id,
-      venue,
+      venue = final_venue,
       scheduled = !is.na(kickoff),
       home_xg_adjustment,
       away_xg_adjustment,
       adjustment_note,
-      data_mode = "curated_prior",
-      fixture_source = "TFF"
+      data_mode = dplyr::if_else(!is.na(provider_fixture_id), "provider_schedule", "curated_prior"),
+      fixture_source = dplyr::if_else(!is.na(provider_fixture_id), "API-Football + TFF eşleme", "TFF"),
+      provider_fixture_id,
+      provider_status,
+      provider_synced_at
     ) |>
     dplyr::arrange(dplyr::desc(fixture_id == "317800"), round, kickoff, fixture_id)
 }
