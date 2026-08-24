@@ -27,6 +27,7 @@ test_that("login opens a working Super Lig dashboard server", {
     expect_match(header, "Kocaelispor", fixed = TRUE)
     expect_match(freshness, "TFF fikstürü", fixed = TRUE)
     expect_match(lineup, "Serhat Öztaşdelen", fixed = TRUE)
+    expect_no_error(output$overview_odds_teaser)
     expect_no_error(output$odds_top_table)
     expect_no_error(output$scorecard_table)
     expect_no_error(output$comparison_table)

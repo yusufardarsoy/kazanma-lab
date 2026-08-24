@@ -184,7 +184,7 @@ app_server <- function(input, output, session, config) {
             class = "odds-option",
             span(paste(row$market, "·", row$selection)),
             strong(format(row$odds, nsmall = 2)),
-            small(paste("Model", scales::percent(row$model_probability, accuracy = .1), "·", row$signal))
+            tags$small(paste("Model", scales::percent(row$model_probability, accuracy = .1), "·", row$signal))
           )
         })
       ),
