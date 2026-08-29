@@ -286,7 +286,11 @@ sync_public_football_data <- function(config, now = Sys.time(), force = FALSE) {
     )
     write_public_schedule_cache(schedule, config)
 
-    results <- football_data_result_rows(season |> dplyr::filter(completed))
+    results <- dplyr::bind_rows(
+      football_data_result_rows(season |> dplyr::filter(completed)),
+      football_data_result_rows(fixtures |> dplyr::filter(completed))
+    ) |>
+      dplyr::distinct(fixture_id, .keep_all = TRUE)
     if (nrow(results) > 0) result_count <- import_postmatch_results(results, config$db_path)
     odds <- dplyr::bind_rows(
       football_data_odds_rows(season |> dplyr::filter(completed), "closing"),
@@ -319,4 +323,87 @@ sync_public_football_data <- function(config, now = Sys.time(), force = FALSE) {
     )
     stop(e)
   })
+}
+
+sync_public_scoreboard_scores <- function(config, now = Sys.time()) {
+  initialize_store(config$db_path)
+  catalog <- football_data_catalog()
+  start_d <- format(now - 60 * 86400, "%Y%m%d")
+  end_d <- format(now + 7 * 86400, "%Y%m%d")
+  date_query <- paste0(start_d, "-", end_d)
+
+  raw <- tryCatch({
+    httr2::request("https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard") |>
+      httr2::req_url_query(dates = date_query) |>
+      httr2::req_user_agent("Kazanma-Lab/0.4 personal analytics") |>
+      httr2::req_timeout(25) |>
+      httr2::req_retry(max_tries = 2) |>
+      httr2::req_perform() |>
+      httr2::resp_body_json(simplifyVector = FALSE)
+  }, error = function(e) NULL)
+
+  if (is.null(raw) || length(raw$events) == 0) {
+    return(invisible(list(
+      source = "Açık Canlı Skor Servisi", status = "cached", results = 0L, odds_rows = 0L,
+      message = "Canlı skor servisine ulaşılamadı veya aktif maç bulunamadı."
+    )))
+  }
+
+  results_list <- list()
+  for (ev in raw$events) {
+    comp <- ev$competitions[[1]]
+    status <- ev$status$type$name
+    completed <- isTRUE(ev$status$type$completed) || identical(status, "STATUS_FULL_TIME") || identical(status, "STATUS_FINAL")
+    if (!completed) next
+
+    home_comp <- purrr::keep(comp$competitors, ~ .x$homeAway == "home")[[1]]
+    away_comp <- purrr::keep(comp$competitors, ~ .x$homeAway == "away")[[1]]
+
+    home_lookup <- provider_team_lookup(home_comp$team$name)
+    away_lookup <- provider_team_lookup(away_comp$team$name)
+    if (is.na(home_lookup$team) || is.na(away_lookup$team)) next
+
+    home_score <- suppressWarnings(as.integer(home_comp$score))
+    away_score <- suppressWarnings(as.integer(away_comp$score))
+    if (is.na(home_score) || is.na(away_score)) next
+
+    matched <- catalog |>
+      dplyr::filter(home_team == home_lookup$team, away_team == away_lookup$team)
+    fixture_id <- if (nrow(matched) > 0) matched$fixture_id[[1]] else NA_character_
+    if (is.na(fixture_id)) next
+
+    match_date <- format(as.POSIXct(ev$date, format = "%Y-%m-%dT%H:%MZ", tz = "UTC"), "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
+
+    results_list[[length(results_list) + 1L]] <- tibble::tibble(
+      fixture_id = fixture_id,
+      match_date = match_date,
+      home_team = home_lookup$team,
+      away_team = away_lookup$team,
+      home_goals = home_score,
+      away_goals = away_score,
+      home_xg = NA_real_,
+      away_xg = NA_real_,
+      home_cards = NA_integer_,
+      away_cards = NA_integer_,
+      result_source = "Açık Canlı Skor Servisi",
+      source_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard",
+      source_published_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
+      fetched_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
+    )
+  }
+
+  imported_count <- 0L
+  if (length(results_list) > 0) {
+    results_df <- dplyr::bind_rows(results_list) |>
+      dplyr::distinct(fixture_id, .keep_all = TRUE)
+    imported_count <- import_postmatch_results(results_df, config$db_path)
+  }
+
+  invisible(list(
+    source = "Açık Canlı Skor Servisi",
+    status = "ok",
+    results = imported_count,
+    odds_rows = 0L,
+    message = paste0(imported_count, " tamamlanan maç skoru canlı açık web kaynağından güncellendi.")
+  ))
 }

@@ -69,7 +69,7 @@ test_that("scorecard compares only a frozen prediction with its later result", {
   score <- switch(predicted, home = c(1L, 0L), away = c(0L, 1L), draw = c(0L, 0L))
   result <- data.frame(
     fixture_id = prediction$fixture$fixture_id,
-    match_date = format(prediction$fixture$kickoff, "%Y-%m-%dT%H:%M:%S%z"),
+    match_date = format(Sys.time() + 3600, "%Y-%m-%dT%H:%M:%S%z"),
     home_team = prediction$home$team,
     away_team = prediction$away$team,
     home_goals = score[[1]],

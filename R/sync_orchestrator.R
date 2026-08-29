@@ -12,6 +12,10 @@ auto_sync_all_sources <- function(config, now = Sys.time(), force_public = FALSE
     FOOTBALL_DATA_SOURCE,
     function() sync_public_football_data(config, now, force = force_public)
   )
+  runs$scoreboard <- run_safely(
+    "Açık Canlı Skor Servisi",
+    function() sync_public_scoreboard_scores(config, now)
+  )
   runs$the_odds_api <- if (the_odds_api_enabled(config)) {
     run_safely(THE_ODDS_API_SOURCE, function() sync_the_odds_api(config, now, force = force_odds))
   } else {

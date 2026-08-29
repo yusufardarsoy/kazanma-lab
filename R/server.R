@@ -14,6 +14,7 @@ app_server <- function(input, output, session, config) {
   prediction_value <- reactiveVal(build_selected_prediction())
   import_message <- reactiveVal(NULL)
   live_snapshot <- reactiveVal(NULL)
+  data_version <- reactiveVal(1L)
 
   output$root_ui <- renderUI({
     if (!authenticated()) login_ui(config, login_message()) else dashboard_ui(config)
@@ -87,19 +88,22 @@ app_server <- function(input, output, session, config) {
       return()
     }
     record_analysis(prediction, config$db_path)
+    data_version(data_version() + 1L)
     showNotification("Tahmin zaman damgasıyla donduruldu ve karşılaştırma hafızasına kaydedildi.", type = "message")
   }, ignoreInit = TRUE)
 
   observeEvent(input$sync_live, {
     req(authenticated())
-    showNotification("Süper Lig tarihleri, oranlar ve tamamlanan maçlar eşitleniyor…", duration = 3)
+    showNotification("Süper Lig canlı skorları, oranları ve tamamlanan maçlar eşitleniyor…", duration = 3)
     tryCatch({
       snapshot <- auto_sync_all_sources(config, force_public = TRUE, force_odds = FALSE)
       live_snapshot(snapshot)
+      data_version(data_version() + 1L)
       choices <- super_lig_fixture_choices(input$team_filter %||% "", db_path = config$db_path)
       updateSelectizeInput(session, "fixture_id", choices = choices, selected = input$fixture_id %||% default_fixture_id, server = TRUE)
+      updateSelectInput(session, "result_fixture_id", choices = super_lig_fixture_choices(scheduled_only = TRUE, db_path = config$db_path))
       prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
-      showNotification(paste0("Güncelleme tamamlandı: ", snapshot$results, " sonuç ve ", snapshot$odds_rows, " oran satırı işlendi."), type = "message")
+      showNotification(paste0("Veri eşitleme başarılı: ", snapshot$results, " maç sonucu ve ", snapshot$odds_rows, " oran satırı işlendi."), type = "message")
     }, error = function(e) {
       showNotification(conditionMessage(e), type = "error", duration = 8)
     })
@@ -416,6 +420,10 @@ app_server <- function(input, output, session, config) {
     tryCatch({
       df <- utils::read.csv(input$postmatch_file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
       count <- import_postmatch_results(df, config$db_path)
+      data_version(data_version() + 1L)
+      choices <- super_lig_fixture_choices(input$team_filter %||% "", db_path = config$db_path)
+      updateSelectizeInput(session, "fixture_id", choices = choices, selected = input$fixture_id %||% default_fixture_id, server = TRUE)
+      updateSelectInput(session, "result_fixture_id", choices = super_lig_fixture_choices(scheduled_only = TRUE, db_path = config$db_path))
       prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
       import_message(list(type = "success", text = paste(count, "maç sonucu hafızaya alındı.")))
     }, error = function(e) {
@@ -446,6 +454,10 @@ app_server <- function(input, output, session, config) {
         stringsAsFactors = FALSE
       )
       import_postmatch_results(result, config$db_path)
+      data_version(data_version() + 1L)
+      choices <- super_lig_fixture_choices(input$team_filter %||% "", db_path = config$db_path)
+      updateSelectizeInput(session, "fixture_id", choices = choices, selected = input$fixture_id %||% default_fixture_id, server = TRUE)
+      updateSelectInput(session, "result_fixture_id", choices = super_lig_fixture_choices(scheduled_only = TRUE, db_path = config$db_path))
       prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
       import_message(list(type = "success", text = paste0(fixture$home_team, " ", home_goals, "–", away_goals, " ", fixture$away_team, " sonucu kaydedildi.")))
     }, error = function(e) {
@@ -460,6 +472,7 @@ app_server <- function(input, output, session, config) {
   })
 
   output$history_table <- renderTable({
+    data_version()
     history <- analysis_history(config$db_path)
     if (nrow(history) == 0) return(data.frame(Bilgi = "Henüz kaydedilmiş analiz yok."))
     history |>
@@ -475,12 +488,14 @@ app_server <- function(input, output, session, config) {
   }, width = "100%")
 
   output$comparison_table <- renderTable({
+    data_version()
     comparison <- prediction_result_history(config$db_path)
     if (nrow(comparison) == 0) return(data.frame(Bilgi = "Henüz sonuçtan önce kaydedilmiş tahmin–sonuç eşleşmesi yok."))
     comparison
   }, width = "100%")
 
   output$scorecard_table <- renderTable({
+    data_version()
     score <- model_scorecard(config$db_path)
     score |>
       dplyr::mutate(value = dplyr::case_when(
@@ -493,10 +508,12 @@ app_server <- function(input, output, session, config) {
   }, width = "100%")
 
   output$accuracy_note <- renderUI({
+    data_version()
     div(class = "source-note", strong("Nasıl okunur?"), span(scorecard_interpretation(config$db_path)))
   })
 
   output$automation_health_table <- renderTable({
+    data_version()
     health <- automation_health(config$db_path)
     counts <- health$counts[1, ]
     data.frame(
@@ -507,6 +524,7 @@ app_server <- function(input, output, session, config) {
   }, width = "100%")
 
   output$automation_note <- renderUI({
+    data_version()
     health <- automation_health(config$db_path)
     if (nrow(health$last_public_run) == 0) {
       return(div(class = "source-note", strong("Henüz otomatik eşitleme yok."), span("Şimdi veri eşitle düğmesini kullanabilir veya Windows görevini kurabilirsin; temel akış API anahtarı istemez.")))
@@ -516,11 +534,13 @@ app_server <- function(input, output, session, config) {
   })
 
   team_learning_data <- reactive({
+    data_version()
     prediction_value()
     team_learning_summary(config$db_path)
   })
 
   finished_matches_data <- reactive({
+    data_version()
     prediction_value()
     finished_matches_detailed(config$db_path)
   })
