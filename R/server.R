@@ -610,14 +610,16 @@ app_server <- function(input, output, session, config) {
 
   output$tactics_home_player_select <- renderUI({
     p <- prediction()
-    players <- p$home_players
+    players <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$home$team) else tibble::tibble()
+    if (nrow(players) == 0) return(div("Oyuncu listesi bulunamadı."))
     choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
     selectInput("tactics_home_player", paste(p$home$team, "Oyuncusu"), choices = choices, selected = choices[[1]])
   })
 
   output$tactics_away_player_select <- renderUI({
     p <- prediction()
-    players <- p$away_players
+    players <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 0) p$away_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$away$team) else tibble::tibble()
+    if (nrow(players) == 0) return(div("Oyuncu listesi bulunamadı."))
     choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
     selectInput("tactics_away_player", paste(p$away$team, "Rakip Koridor Oyuncusu"), choices = choices, selected = choices[[1]])
   })
@@ -625,8 +627,9 @@ app_server <- function(input, output, session, config) {
   home_player_heatmap_data <- reactive({
     req(input$tactics_home_player)
     p <- prediction()
-    player_row <- p$home_players |> dplyr::filter(player == input$tactics_home_player)
-    role <- if (nrow(player_row) > 0) player_row$role[[1]] else "Winger"
+    players <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$home$team) else tibble::tibble()
+    player_row <- if (nrow(players) > 0) players |> dplyr::filter(player == input$tactics_home_player) else tibble::tibble()
+    role <- if (nrow(player_row) > 0 && "role" %in% names(player_row)) player_row$role[[1]] else "Winger"
     side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
     run_player_heatmap(input$tactics_home_player, p$home$team, role = role, side = side, config = config)
   })
@@ -634,8 +637,9 @@ app_server <- function(input, output, session, config) {
   away_player_heatmap_data <- reactive({
     req(input$tactics_away_player)
     p <- prediction()
-    player_row <- p$away_players |> dplyr::filter(player == input$tactics_away_player)
-    role <- if (nrow(player_row) > 0) player_row$role[[1]] else "Defender"
+    players <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 0) p$away_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$away$team) else tibble::tibble()
+    player_row <- if (nrow(players) > 0) players |> dplyr::filter(player == input$tactics_away_player) else tibble::tibble()
+    role <- if (nrow(player_row) > 0 && "role" %in% names(player_row)) player_row$role[[1]] else "Defender"
     side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
     run_player_heatmap(input$tactics_away_player, p$away$team, role = role, side = side, config = config)
   })

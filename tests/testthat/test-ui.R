@@ -31,5 +31,8 @@ test_that("login opens a working Super Lig dashboard server", {
     expect_no_error(output$odds_top_table)
     expect_no_error(output$scorecard_table)
     expect_no_error(output$comparison_table)
+    expect_no_error(output$tactics_home_player_select)
+    expect_no_error(output$tactics_away_player_select)
+    expect_no_error(output$nvidia_ai_scout_report_view)
   })
 })

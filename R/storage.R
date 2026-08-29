@@ -995,13 +995,13 @@ save_tactical_scout_report_db <- function(db_path, report) {
 
 get_latest_tactical_scout_report_db <- function(db_path, match_name = NULL) {
   with_store(db_path, function(con) {
-    query <- if (!is.null(match_name) && nzchar(match_name)) {
-      "SELECT * FROM tactical_scout_reports WHERE match_name = ? ORDER BY created_at DESC LIMIT 1"
+    if (!is.null(match_name) && nzchar(match_name)) {
+      query <- "SELECT * FROM tactical_scout_reports WHERE match_name = ? ORDER BY created_at DESC LIMIT 1"
+      res <- DBI::dbGetQuery(con, query, params = list(as.character(match_name)))
     } else {
-      "SELECT * FROM tactical_scout_reports ORDER BY created_at DESC LIMIT 1"
+      query <- "SELECT * FROM tactical_scout_reports ORDER BY created_at DESC LIMIT 1"
+      res <- DBI::dbGetQuery(con, query)
     }
-    params <- if (!is.null(match_name) && nzchar(match_name)) list(match_name) else list()
-    res <- DBI::dbGetQuery(con, query, params = params)
     if (nrow(res) == 0) return(NULL)
     as.list(res[1, ])
   })
