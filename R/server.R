@@ -58,6 +58,7 @@ app_server <- function(input, output, session, config) {
       overview = overview_ui(),
       odds = odds_ui(),
       lineups = lineups_ui(),
+      agent_tactics = agent_tactics_ui(),
       styles = styles_ui(),
       teams = teams_ui(),
       players = players_ui(),
@@ -602,4 +603,132 @@ app_server <- function(input, output, session, config) {
     if (nrow(matches) == 0) return(data.frame(Bilgi = "Henüz kaydedilmiş biten maç sonucu yok."))
     matches
   }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
+
+  # --- AI Tactical Intelligence & Heatmap Engine ---
+  ai_scout_result <- reactiveVal(NULL)
+  ai_scout_loading <- reactiveVal(FALSE)
+
+  output$tactics_home_player_select <- renderUI({
+    p <- prediction()
+    players <- p$home_players
+    choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
+    selectInput("tactics_home_player", paste(p$home$team, "Oyuncusu"), choices = choices, selected = choices[[1]])
+  })
+
+  output$tactics_away_player_select <- renderUI({
+    p <- prediction()
+    players <- p$away_players
+    choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
+    selectInput("tactics_away_player", paste(p$away$team, "Rakip Koridor Oyuncusu"), choices = choices, selected = choices[[1]])
+  })
+
+  home_player_heatmap_data <- reactive({
+    req(input$tactics_home_player)
+    p <- prediction()
+    player_row <- p$home_players |> dplyr::filter(player == input$tactics_home_player)
+    role <- if (nrow(player_row) > 0) player_row$role[[1]] else "Winger"
+    side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
+    run_player_heatmap(input$tactics_home_player, p$home$team, role = role, side = side, config = config)
+  })
+
+  away_player_heatmap_data <- reactive({
+    req(input$tactics_away_player)
+    p <- prediction()
+    player_row <- p$away_players |> dplyr::filter(player == input$tactics_away_player)
+    role <- if (nrow(player_row) > 0) player_row$role[[1]] else "Defender"
+    side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
+    run_player_heatmap(input$tactics_away_player, p$away$team, role = role, side = side, config = config)
+  })
+
+  output$home_player_heatmap_view <- renderUI({
+    h <- home_player_heatmap_data()
+    tags$img(src = h$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);")
+  })
+
+  output$away_player_heatmap_view <- renderUI({
+    h <- away_player_heatmap_data()
+    tags$img(src = h$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);")
+  })
+
+  render_zone_bars_widget <- function(h) {
+    div(
+      class = "zone-bars-container",
+      div(class = "zone-bar-row", span("3. Bölge (Hücum)"), div(class = "zone-progress", div(class = "zone-bar-fill gold", style = paste0("width: ", h$attacking_third_pct, "%;"))), span(paste0("%", h$attacking_third_pct))),
+      div(class = "zone-bar-row", span("Orta Alan"), div(class = "zone-progress", div(class = "zone-bar-fill teal", style = paste0("width: ", h$middle_third_pct, "%;"))), span(paste0("%", h$middle_third_pct))),
+      div(class = "zone-bar-row", span("1. Bölge (Savunma)"), div(class = "zone-progress", div(class = "zone-bar-fill violet", style = paste0("width: ", h$defensive_third_pct, "%;"))), span(paste0("%", h$defensive_third_pct))),
+      div(class = "zone-bar-row", span("Ceza Sahası Girişi"), div(class = "zone-progress", div(class = "zone-bar-fill red", style = paste0("width: ", h$box_penetration_pct, "%;"))), span(paste0("%", h$box_penetration_pct)))
+    )
+  }
+
+  output$home_player_zone_bars <- renderUI({
+    render_zone_bars_widget(home_player_heatmap_data())
+  })
+
+  output$away_player_zone_bars <- renderUI({
+    render_zone_bars_widget(away_player_heatmap_data())
+  })
+
+  observeEvent(input$generate_ai_scout, {
+    req(input$tactics_home_player, input$tactics_away_player)
+    p <- prediction()
+    showNotification("NVIDIA NIM Llama 3.2 Taktik Ajanı analiz üretiyor…", type = "message", duration = 4)
+    ai_scout_loading(TRUE)
+
+    h_metrics <- home_player_heatmap_data()
+    a_metrics <- away_player_heatmap_data()
+    match_name <- paste(p$home$team, "vs", p$away$team)
+
+    rep <- run_nvidia_ai_scout(
+      match_name = match_name,
+      home_team = p$home$team,
+      away_team = p$away$team,
+      home_player = input$tactics_home_player,
+      home_role = h_metrics$role,
+      away_player = input$tactics_away_player,
+      away_role = a_metrics$role,
+      home_metrics = h_metrics,
+      away_metrics = a_metrics,
+      config = config
+    )
+    ai_scout_loading(FALSE)
+    ai_scout_result(rep)
+  }, ignoreInit = TRUE)
+
+  output$nvidia_ai_scout_report_view <- renderUI({
+    rep <- ai_scout_result()
+    if (is.null(rep)) {
+      latest <- get_latest_tactical_scout_report_db(config$db_path)
+      if (!is.null(latest)) {
+        rep <- list(
+          status = "success",
+          model = latest$model_name,
+          duration_seconds = latest$duration_seconds,
+          report_text = latest$report_text,
+          home_player = latest$home_player,
+          away_player = latest$away_player
+        )
+      } else {
+        return(div(
+          class = "ai-scout-empty",
+          p("Henüz bir taktik raporu üretilmedi. Yukarıdaki oyuncuları seçip 'NVIDIA Llama 3.2 ile AI Taktik Raporu Üret' butonuna tıklayın.")
+        ))
+      }
+    }
+
+    if (!identical(rep$status, "success")) {
+      return(div(class = "import-message error", paste("Hata:", rep$error_message %||% "NVIDIA NIM API yanıt vermedi.")))
+    }
+
+    tagList(
+      div(
+        class = "ai-report-meta",
+        status_badge(paste0("Model: ", rep$model), "live"),
+        status_badge(paste0("İşlem Süresi: ", rep$duration_seconds, "s"), "neutral")
+      ),
+      div(
+        class = "ai-report-content",
+        HTML(markdown::markdownToHTML(text = rep$report_text, fragment.only = TRUE))
+      )
+    )
+  })
 }

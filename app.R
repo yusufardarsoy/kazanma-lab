@@ -41,6 +41,7 @@ source_files <- c(
   "R/provider_public_data.R",
   "R/provider_the_odds_api.R",
   "R/sync_orchestrator.R",
+  "R/agent_intelligence.R",
   "R/charts.R",
   "R/ui.R",
   "R/server.R"

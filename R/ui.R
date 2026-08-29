@@ -49,8 +49,8 @@ dashboard_ui <- function(config) {
         div(class = "sidebar-label", "ÇALIŞMA ALANI"),
         radioButtons(
           "section", NULL,
-          choiceNames = c("Maç merkezi", "Oran radarı", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası", "Literatür & Teori"),
-          choiceValues = c("overview", "odds", "lineups", "styles", "teams", "players", "memory", "knowledge"),
+          choiceNames = c("Maç merkezi", "Oran radarı", "Muhtemel 11", "AI Taktik & Heatmap", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası", "Literatür & Teori"),
+          choiceValues = c("overview", "odds", "lineups", "agent_tactics", "styles", "teams", "players", "memory", "knowledge"),
           selected = "overview"
         ),
         div(class = "sidebar-divider"),
@@ -166,6 +166,56 @@ lineups_ui <- function() {
     uiOutput("availability_status"),
     div(class = "panel", h3("Sakatlık ve cezalı listesi"), tableOutput("availability_table")),
     div(class = "panel caveat-panel", strong("Önemli:"), " Resmi ilk 11 genellikle başlama vuruşuna yakın gelir. O ana kadar ekrandaki değerler tahmindir; resmi veri geldiğinde durum “onaylı” olarak değişmelidir.")
+  )
+}
+
+agent_tactics_ui <- function() {
+  tagList(
+    div(
+      class = "section-heading",
+      div(class = "eyebrow", "NVIDIA NIM LLAMA 3.2 VISION · SPATIAL HEATMAP RADAR"),
+      h1("Yapay Zeka Taktik Ajanı & Oyuncu Isı Haritası"),
+      p("ScraperFC ve Sofascore saha koordinat verileriyle oluşturulan 2D Gaussian ısı haritaları, oyuncuların koridor hakimiyetini ve NVIDIA Llama 3.2 Vision taktiksel scout analizini sunar.")
+    ),
+    div(
+      class = "panel",
+      div(class = "panel-kicker", "TAKTIK EŞLEŞME SEÇİCİ"),
+      h3("Koridor ve Oyuncu Eşleşmesi"),
+      div(
+        class = "two-column",
+        div(
+          uiOutput("tactics_home_player_select")
+        ),
+        div(
+          uiOutput("tactics_away_player_select")
+        )
+      ),
+      div(
+        style = "margin-top: 14px;",
+        actionButton("generate_ai_scout", "NVIDIA Llama 3.2 ile AI Taktik Raporu Üret ⚡", class = "btn-primary btn-block")
+      )
+    ),
+    div(
+      class = "two-column",
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "EV SAHİBİ OYUNCUSU ISI HARİTASI"),
+        uiOutput("home_player_heatmap_view"),
+        div(style = "margin-top: 14px;", uiOutput("home_player_zone_bars"))
+      ),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "DEPLASMAN RAKİP KORİDOR ISI HARİTASI"),
+        uiOutput("away_player_heatmap_view"),
+        div(style = "margin-top: 14px;", uiOutput("away_player_zone_bars"))
+      )
+    ),
+    div(
+      class = "panel",
+      div(class = "panel-kicker", "NVIDIA NIM SCOUT RAPORU"),
+      h3("Yapay Zeka Taktiksel Çatışma & Boşluk Analizi"),
+      uiOutput("nvidia_ai_scout_report_view")
+    )
   )
 }
 

@@ -48,6 +48,9 @@ read_app_config <- function() {
     odds_refresh_hours = as.numeric(Sys.getenv("ODDS_API_REFRESH_HOURS", "8")),
     cache_dir = Sys.getenv("KAZANMA_CACHE_DIR", "data/cache"),
     sync_detail_budget = as.integer(Sys.getenv("KAZANMA_SYNC_DETAIL_BUDGET", "8")),
+    nvidia_api_key = Sys.getenv("NVIDIA_API_KEY", "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"),
+    nvidia_model = Sys.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
+    python_bin = Sys.getenv("PYTHON_BIN", "C:/Users/arda/anaconda3/python.exe"),
     # Uygulama bilinçli olarak yalnızca 2026-27 Türkiye Süper Ligi'ne kilitlidir.
     league_id = 203L,
     season = 2026L,

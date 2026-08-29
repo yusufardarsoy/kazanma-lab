@@ -133,9 +133,46 @@ initialize_store <- function(db_path) {
         source_published_at TEXT,
         fetched_at TEXT NOT NULL
       )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS player_heatmaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_name TEXT NOT NULL,
+        team_name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        side TEXT,
+        defensive_third_pct REAL,
+        middle_third_pct REAL,
+        attacking_third_pct REAL,
+        left_flank_pct REAL,
+        right_flank_pct REAL,
+        central_pct REAL,
+        left_halfspace_pct REAL,
+        right_halfspace_pct REAL,
+        box_penetration_pct REAL,
+        avg_x REAL,
+        avg_y REAL,
+        total_touches INTEGER,
+        image_path TEXT,
+        generated_at TEXT NOT NULL,
+        UNIQUE(player_name, team_name)
+      )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS tactical_scout_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        match_name TEXT NOT NULL,
+        home_team TEXT NOT NULL,
+        away_team TEXT NOT NULL,
+        home_player TEXT,
+        away_player TEXT,
+        model_name TEXT NOT NULL,
+        report_text TEXT NOT NULL,
+        duration_seconds REAL,
+        created_at TEXT NOT NULL
+      )")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_lineups_fixture ON provider_lineups(provider_fixture_id)")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_absences_fixture ON provider_absences(provider_fixture_id)")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_odds_fixture_time ON odds_snapshots(fixture_id, snapshot_at)")
+    DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_player_heatmaps_name ON player_heatmaps(player_name, team_name)")
   })
   invisible(TRUE)
 }
@@ -868,6 +905,105 @@ match_actual_result <- function(fixture_id, db_path) {
     prov <- DBI::dbGetQuery(con, "SELECT source FROM result_provenance WHERE fixture_id = ? LIMIT 1", params = list(as.character(fixture_id)))
     res$source <- if (nrow(prov) > 0) prov$source[[1]] else "Football-Data.co.uk"
     tibble::as_tibble(res[1, ])
+  })
+}
+
+save_player_heatmap_db <- function(db_path, heatmap_data) {
+  with_store(db_path, function(con) {
+    DBI::dbExecute(con, "
+      INSERT INTO player_heatmaps (
+        player_name, team_name, role, side,
+        defensive_third_pct, middle_third_pct, attacking_third_pct,
+        left_flank_pct, right_flank_pct, central_pct,
+        left_halfspace_pct, right_halfspace_pct, box_penetration_pct,
+        avg_x, avg_y, total_touches, image_path, generated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(player_name, team_name) DO UPDATE SET
+        role = excluded.role,
+        side = excluded.side,
+        defensive_third_pct = excluded.defensive_third_pct,
+        middle_third_pct = excluded.middle_third_pct,
+        attacking_third_pct = excluded.attacking_third_pct,
+        left_flank_pct = excluded.left_flank_pct,
+        right_flank_pct = excluded.right_flank_pct,
+        central_pct = excluded.central_pct,
+        left_halfspace_pct = excluded.left_halfspace_pct,
+        right_halfspace_pct = excluded.right_halfspace_pct,
+        box_penetration_pct = excluded.box_penetration_pct,
+        avg_x = excluded.avg_x,
+        avg_y = excluded.avg_y,
+        total_touches = excluded.total_touches,
+        image_path = excluded.image_path,
+        generated_at = excluded.generated_at
+    ", params = list(
+      as.character(heatmap_data$player_name),
+      as.character(heatmap_data$team_name),
+      as.character(heatmap_data$role %||% "Winger"),
+      as.character(heatmap_data$side %||% "left"),
+      as.numeric(heatmap_data$defensive_third_pct %||% 0),
+      as.numeric(heatmap_data$middle_third_pct %||% 0),
+      as.numeric(heatmap_data$attacking_third_pct %||% 0),
+      as.numeric(heatmap_data$left_flank_pct %||% 0),
+      as.numeric(heatmap_data$right_flank_pct %||% 0),
+      as.numeric(heatmap_data$central_pct %||% 0),
+      as.numeric(heatmap_data$left_halfspace_pct %||% 0),
+      as.numeric(heatmap_data$right_halfspace_pct %||% 0),
+      as.numeric(heatmap_data$box_penetration_pct %||% 0),
+      as.numeric(heatmap_data$avg_x %||% 50),
+      as.numeric(heatmap_data$avg_y %||% 50),
+      as.integer(heatmap_data$total_touches %||% 100),
+      as.character(heatmap_data$image_path %||% ""),
+      format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+    ))
+  })
+}
+
+get_player_heatmap_db <- function(db_path, player_name, team_name = NULL) {
+  with_store(db_path, function(con) {
+    query <- if (!is.null(team_name) && nzchar(team_name)) {
+      "SELECT * FROM player_heatmaps WHERE player_name = ? AND team_name = ? LIMIT 1"
+    } else {
+      "SELECT * FROM player_heatmaps WHERE player_name = ? LIMIT 1"
+    }
+    params <- if (!is.null(team_name) && nzchar(team_name)) list(player_name, team_name) else list(player_name)
+    res <- DBI::dbGetQuery(con, query, params = params)
+    if (nrow(res) == 0) return(NULL)
+    as.list(res[1, ])
+  })
+}
+
+save_tactical_scout_report_db <- function(db_path, report) {
+  with_store(db_path, function(con) {
+    DBI::dbExecute(con, "
+      INSERT INTO tactical_scout_reports (
+        match_name, home_team, away_team, home_player, away_player,
+        model_name, report_text, duration_seconds, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ", params = list(
+      as.character(report$match_name %||% ""),
+      as.character(report$home_team %||% ""),
+      as.character(report$away_team %||% ""),
+      as.character(report$home_player %||% ""),
+      as.character(report$away_player %||% ""),
+      as.character(report$model %||% "meta/llama-3.2-11b-vision-instruct"),
+      as.character(report$report_text %||% ""),
+      as.numeric(report$duration_seconds %||% 0),
+      format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+    ))
+  })
+}
+
+get_latest_tactical_scout_report_db <- function(db_path, match_name = NULL) {
+  with_store(db_path, function(con) {
+    query <- if (!is.null(match_name) && nzchar(match_name)) {
+      "SELECT * FROM tactical_scout_reports WHERE match_name = ? ORDER BY created_at DESC LIMIT 1"
+    } else {
+      "SELECT * FROM tactical_scout_reports ORDER BY created_at DESC LIMIT 1"
+    }
+    params <- if (!is.null(match_name) && nzchar(match_name)) list(match_name) else list()
+    res <- DBI::dbGetQuery(con, query, params = params)
+    if (nrow(res) == 0) return(NULL)
+    as.list(res[1, ])
   })
 }
 
