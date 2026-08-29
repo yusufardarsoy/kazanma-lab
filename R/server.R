@@ -604,92 +604,127 @@ app_server <- function(input, output, session, config) {
     matches
   }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
 
-  # --- AI Tactical Intelligence & Heatmap Engine ---
+  # --- AI Tactical Intelligence & 11 vs 11 Heatmap Engine ---
   ai_scout_result <- reactiveVal(NULL)
   ai_scout_loading <- reactiveVal(FALSE)
-
-  output$tactics_home_player_select <- renderUI({
-    p <- prediction()
-    players <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$home$team) else tibble::tibble()
-    if (nrow(players) == 0) return(div("Oyuncu listesi bulunamadı."))
-    choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
-    selectInput("tactics_home_player", paste(p$home$team, "Oyuncusu"), choices = choices, selected = choices[[1]])
-  })
-
-  output$tactics_away_player_select <- renderUI({
-    p <- prediction()
-    players <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 0) p$away_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$away$team) else tibble::tibble()
-    if (nrow(players) == 0) return(div("Oyuncu listesi bulunamadı."))
-    choices <- stats::setNames(players$player, paste0(players$player, " (", players$role, " · ", players$position, ")"))
-    selectInput("tactics_away_player", paste(p$away$team, "Rakip Koridor Oyuncusu"), choices = choices, selected = choices[[1]])
-  })
-
-  home_player_heatmap_data <- reactive({
-    req(input$tactics_home_player)
-    p <- prediction()
-    players <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$home$team) else tibble::tibble()
-    player_row <- if (nrow(players) > 0) players |> dplyr::filter(player == input$tactics_home_player) else tibble::tibble()
-    role <- if (nrow(player_row) > 0 && "role" %in% names(player_row)) player_row$role[[1]] else "Winger"
-    side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
-    run_player_heatmap(input$tactics_home_player, p$home$team, role = role, side = side, config = config)
-  })
-
-  away_player_heatmap_data <- reactive({
-    req(input$tactics_away_player)
-    p <- prediction()
-    players <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 0) p$away_xi else if (!is.null(p$player_markets)) p$player_markets |> dplyr::filter(team == p$away$team) else tibble::tibble()
-    player_row <- if (nrow(players) > 0) players |> dplyr::filter(player == input$tactics_away_player) else tibble::tibble()
-    role <- if (nrow(player_row) > 0 && "role" %in% names(player_row)) player_row$role[[1]] else "Defender"
-    side <- if (grepl("sağ|sag|right", tolower(role))) "right" else if (grepl("sol|left", tolower(role))) "left" else "center"
-    run_player_heatmap(input$tactics_away_player, p$away$team, role = role, side = side, config = config)
-  })
-
-  output$home_player_heatmap_view <- renderUI({
-    h <- home_player_heatmap_data()
-    tags$img(src = h$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);")
-  })
-
-  output$away_player_heatmap_view <- renderUI({
-    h <- away_player_heatmap_data()
-    tags$img(src = h$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);")
-  })
 
   render_zone_bars_widget <- function(h) {
     div(
       class = "zone-bars-container",
-      div(class = "zone-bar-row", span("3. Bölge (Hücum)"), div(class = "zone-progress", div(class = "zone-bar-fill gold", style = paste0("width: ", h$attacking_third_pct, "%;"))), span(paste0("%", h$attacking_third_pct))),
-      div(class = "zone-bar-row", span("Orta Alan"), div(class = "zone-progress", div(class = "zone-bar-fill teal", style = paste0("width: ", h$middle_third_pct, "%;"))), span(paste0("%", h$middle_third_pct))),
-      div(class = "zone-bar-row", span("1. Bölge (Savunma)"), div(class = "zone-progress", div(class = "zone-bar-fill violet", style = paste0("width: ", h$defensive_third_pct, "%;"))), span(paste0("%", h$defensive_third_pct))),
-      div(class = "zone-bar-row", span("Ceza Sahası Girişi"), div(class = "zone-progress", div(class = "zone-bar-fill red", style = paste0("width: ", h$box_penetration_pct, "%;"))), span(paste0("%", h$box_penetration_pct)))
+      div(class = "zone-bar-row", span("3. Bölge (Hücum)"), div(class = "zone-progress", div(class = "zone-bar-fill gold", style = paste0("width: ", h$attacking_third_pct %||% 0, "%;"))), span(paste0("%", h$attacking_third_pct %||% 0))),
+      div(class = "zone-bar-row", span("Orta Alan"), div(class = "zone-progress", div(class = "zone-bar-fill teal", style = paste0("width: ", h$middle_third_pct %||% 0, "%;"))), span(paste0("%", h$middle_third_pct %||% 0))),
+      div(class = "zone-bar-row", span("1. Bölge (Savunma)"), div(class = "zone-progress", div(class = "zone-bar-fill violet", style = paste0("width: ", h$defensive_third_pct %||% 0, "%;"))), span(paste0("%", h$defensive_third_pct %||% 0))),
+      div(class = "zone-bar-row", span("Ceza Sahası Girişi"), div(class = "zone-progress", div(class = "zone-bar-fill red", style = paste0("width: ", h$box_penetration_pct %||% 0, "%;"))), span(paste0("%", h$box_penetration_pct %||% 0)))
     )
   }
 
-  output$home_player_zone_bars <- renderUI({
-    render_zone_bars_widget(home_player_heatmap_data())
-  })
-
-  output$away_player_zone_bars <- renderUI({
-    render_zone_bars_widget(away_player_heatmap_data())
+  output$positional_matchups_grid <- renderUI({
+    p <- prediction()
+    h_xi <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi else tibble::tibble()
+    a_xi <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 0) p$away_xi else tibble::tibble()
+    
+    if (nrow(h_xi) == 0 || nrow(a_xi) == 0) {
+      return(div(class = "ai-scout-empty", p("İlk 11 kadro verisi hazırlanıyor…")))
+    }
+    
+    sector_filter <- input$tactics_sector_filter %||% "all"
+    n_pairs <- min(nrow(h_xi), nrow(a_xi))
+    
+    matchup_cards <- list()
+    
+    for (i in seq_len(n_pairs)) {
+      hp <- h_xi[i, ]
+      ap <- a_xi[i, ]
+      
+      pos <- hp$position
+      if (!identical(sector_filter, "all") && !identical(pos, sector_filter)) {
+        next
+      }
+      
+      pos_label <- switch(
+        pos,
+        GK = "🧤 KALECİ EŞLEŞMESİ",
+        DEF = "🛡️ DEFANS / BEK HATTI",
+        MID = "⚙️ ORTA SAHA MERKEZİ",
+        FWD = "⚡ HÜCUM & FORVET HATTI",
+        "MEVKİ EŞLEŞMESİ"
+      )
+      
+      h_side <- if (grepl("sağ|sag|right", tolower(hp$role))) "right" else if (grepl("sol|left", tolower(hp$role))) "left" else "center"
+      a_side <- if (grepl("sağ|sag|right", tolower(ap$role))) "right" else if (grepl("sol|left", tolower(ap$role))) "left" else "center"
+      
+      h_map <- run_player_heatmap(hp$player, p$home$team, role = hp$role, side = h_side, config = config)
+      a_map <- run_player_heatmap(ap$player, p$away$team, role = ap$role, side = a_side, config = config)
+      
+      h_att <- h_map$attacking_third_pct %||% 0
+      a_att <- a_map$attacking_third_pct %||% 0
+      adv_text <- if (h_att > a_att) {
+        paste0(p$home$team, " +%", round(h_att - a_att, 1), " Baskı")
+      } else {
+        paste0(p$away$team, " +%", round(a_att - h_att, 1), " Baskı")
+      }
+      
+      card <- div(
+        class = "panel matchup-position-card",
+        style = "margin-bottom: 22px; border: 1px solid rgba(148, 163, 184, 0.2);",
+        div(
+          class = "matchup-card-header",
+          style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 10px; margin-bottom: 14px;",
+          div(
+            span(class = "panel-kicker", pos_label),
+            h3(style = "margin: 4px 0 0; font-size: 1.15rem;", paste0(hp$player, " (", p$home$team, ") vs ", ap$player, " (", p$away$team, ")"))
+          ),
+          status_badge(adv_text, "live")
+        ),
+        div(
+          class = "two-column",
+          div(
+            class = "player-subcard",
+            div(strong(hp$player), span(paste0(" (", hp$role, " · ", hp$position, ")")), style = "margin-bottom: 8px; color: #f8fafc; font-size: 0.95rem;"),
+            tags$img(src = h_map$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);"),
+            render_zone_bars_widget(h_map)
+          ),
+          div(
+            class = "player-subcard",
+            div(strong(ap$player), span(paste0(" (", ap$role, " · ", ap$position, ")")), style = "margin-bottom: 8px; color: #f8fafc; font-size: 0.95rem;"),
+            tags$img(src = a_map$image_path, style = "width: 100%; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.15);"),
+            render_zone_bars_widget(a_map)
+          )
+        )
+      )
+      matchup_cards[[length(matchup_cards) + 1L]] <- card
+    }
+    
+    if (length(matchup_cards) == 0) {
+      return(div(class = "ai-scout-empty", p("Seçilen mevkide oyuncu eşleşmesi bulunamadı.")))
+    }
+    
+    tagList(matchup_cards)
   })
 
   observeEvent(input$generate_ai_scout, {
-    req(input$tactics_home_player, input$tactics_away_player)
     p <- prediction()
     showNotification("NVIDIA NIM Llama 3.2 Taktik Ajanı analiz üretiyor…", type = "message", duration = 4)
     ai_scout_loading(TRUE)
 
-    h_metrics <- home_player_heatmap_data()
-    a_metrics <- away_player_heatmap_data()
+    h_lead <- if (!is.null(p$home_xi) && nrow(p$home_xi) > 0) p$home_xi[nrow(p$home_xi), ] else list(player = "Hücum Lideri", role = "Forvet")
+    a_lead <- if (!is.null(p$away_xi) && nrow(p$away_xi) > 1) p$away_xi[2, ] else list(player = "Savunma Lideri", role = "Stoper")
+    
+    h_side <- if (grepl("sağ|sag|right", tolower(h_lead$role))) "right" else if (grepl("sol|left", tolower(h_lead$role))) "left" else "center"
+    a_side <- if (grepl("sağ|sag|right", tolower(a_lead$role))) "right" else if (grepl("sol|left", tolower(a_lead$role))) "left" else "center"
+
+    h_metrics <- run_player_heatmap(h_lead$player, p$home$team, role = h_lead$role, side = h_side, config = config)
+    a_metrics <- run_player_heatmap(a_lead$player, p$away$team, role = a_lead$role, side = a_side, config = config)
     match_name <- paste(p$home$team, "vs", p$away$team)
 
     rep <- run_nvidia_ai_scout(
       match_name = match_name,
       home_team = p$home$team,
       away_team = p$away$team,
-      home_player = input$tactics_home_player,
-      home_role = h_metrics$role,
-      away_player = input$tactics_away_player,
-      away_role = a_metrics$role,
+      home_player = h_lead$player,
+      home_role = h_lead$role,
+      away_player = a_lead$player,
+      away_role = a_lead$role,
       home_metrics = h_metrics,
       away_metrics = a_metrics,
       config = config
@@ -714,7 +749,7 @@ app_server <- function(input, output, session, config) {
       } else {
         return(div(
           class = "ai-scout-empty",
-          p("Henüz bir taktik raporu üretilmedi. Yukarıdaki oyuncuları seçip 'NVIDIA Llama 3.2 ile AI Taktik Raporu Üret' butonuna tıklayın.")
+          p("Henüz bir taktik raporu üretilmedi. '⚡ NVIDIA Llama 3.2 ile AI Taktik Raporu Üret' butonuna tıklayın.")
         ))
       }
     }
@@ -731,7 +766,7 @@ app_server <- function(input, output, session, config) {
       ),
       div(
         class = "ai-report-content",
-        HTML(markdown::markdownToHTML(text = rep$report_text, fragment.only = TRUE))
+        HTML(commonmark::markdown_html(rep$report_text))
       )
     )
   })

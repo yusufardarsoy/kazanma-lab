@@ -173,46 +173,33 @@ agent_tactics_ui <- function() {
   tagList(
     div(
       class = "section-heading",
-      div(class = "eyebrow", "NVIDIA NIM LLAMA 3.2 VISION · SPATIAL HEATMAP RADAR"),
-      h1("Yapay Zeka Taktik Ajanı & Oyuncu Isı Haritası"),
-      p("ScraperFC ve Sofascore saha koordinat verileriyle oluşturulan 2D Gaussian ısı haritaları, oyuncuların koridor hakimiyetini ve NVIDIA Llama 3.2 Vision taktiksel scout analizini sunar.")
+      div(class = "eyebrow", "NVIDIA NIM LLAMA 3.2 VISION · 11 VS 11 SPATIAL HEATMAP RADAR"),
+      h1("Takımsal Mevki Eşleşmeleri & Isı Haritası Radarı"),
+      p("A Takımı Kalecisi vs B Takımı Kalecisi, Defans vs Defans, Forvet vs Forvet... Tüm 11 mevkisinin 2D saha ısı haritaları, koridor baskısı ve NVIDIA Llama 3.2 derin taktik analizi.")
     ),
     div(
       class = "panel",
-      div(class = "panel-kicker", "TAKTIK EŞLEŞME SEÇİCİ"),
-      h3("Koridor ve Oyuncu Eşleşmesi"),
       div(
-        class = "two-column",
+        style = "display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;",
         div(
-          uiOutput("tactics_home_player_select")
+          div(class = "panel-kicker", "MEVKİ FİLTRESİ"),
+          radioButtons(
+            "tactics_sector_filter", NULL,
+            choiceNames = c("Tüm Mevkiler (11 vs 11)", "🧤 Kaleciler", "🛡️ Savunma & Bekler", "⚙️ Orta Saha", "⚡ Hücum & Forvet"),
+            choiceValues = c("all", "GK", "DEF", "MID", "FWD"),
+            selected = "all",
+            inline = TRUE
+          )
         ),
         div(
-          uiOutput("tactics_away_player_select")
+          actionButton("generate_ai_scout", "⚡ NVIDIA Llama 3.2 ile AI Taktik Raporu Üret", class = "btn-primary")
         )
-      ),
-      div(
-        style = "margin-top: 14px;",
-        actionButton("generate_ai_scout", "NVIDIA Llama 3.2 ile AI Taktik Raporu Üret ⚡", class = "btn-primary btn-block")
       )
     ),
-    div(
-      class = "two-column",
-      div(
-        class = "panel",
-        div(class = "panel-kicker", "EV SAHİBİ OYUNCUSU ISI HARİTASI"),
-        uiOutput("home_player_heatmap_view"),
-        div(style = "margin-top: 14px;", uiOutput("home_player_zone_bars"))
-      ),
-      div(
-        class = "panel",
-        div(class = "panel-kicker", "DEPLASMAN RAKİP KORİDOR ISI HARİTASI"),
-        uiOutput("away_player_heatmap_view"),
-        div(style = "margin-top: 14px;", uiOutput("away_player_zone_bars"))
-      )
-    ),
+    uiOutput("positional_matchups_grid"),
     div(
       class = "panel",
-      div(class = "panel-kicker", "NVIDIA NIM SCOUT RAPORU"),
+      div(class = "panel-kicker", "NVIDIA NIM AI SCOUT RAPORU"),
       h3("Yapay Zeka Taktiksel Çatışma & Boşluk Analizi"),
       uiOutput("nvidia_ai_scout_report_view")
     )

@@ -218,7 +218,9 @@ def generate_player_heatmap(player_name, team_name="", role="Winger", side="left
     filename = f"heatmap_{clean_team}_{clean_name}.png"
     filepath = os.path.join(output_dir, filename)
     
-    render_heatmap_image(points, filepath, player_name=player_name, team_name=team_name, role=role)
+    if not os.path.exists(filepath):
+        render_heatmap_image(points, filepath, player_name=player_name, team_name=team_name, role=role)
+    
     metrics = calculate_zone_metrics(points)
     metrics["player_name"] = player_name
     metrics["team_name"] = team_name
