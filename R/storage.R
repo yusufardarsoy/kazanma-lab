@@ -477,6 +477,12 @@ apply_postmatch_learning <- function(data, db_path) {
     return(data)
   }
 
+  now <- Sys.time()
+  match_times <- parse_model_timestamp(results$match_date)
+  results$days_ago <- pmax(0, as.numeric(difftime(now, match_times, units = "days")))
+  results$days_ago[is.na(results$days_ago)] <- 7
+  results$decay_w <- exp(-0.015 * results$days_ago)
+
   team_rows <- dplyr::bind_rows(
     results |>
       dplyr::transmute(
@@ -484,7 +490,9 @@ apply_postmatch_learning <- function(data, db_path) {
         goals_for = home_goals,
         goals_against = away_goals,
         xg_for = dplyr::coalesce(home_xg, as.numeric(home_goals)),
-        cards = dplyr::coalesce(home_cards, 0L)
+        cards = dplyr::coalesce(home_cards, 0L),
+        points = dplyr::case_when(home_goals > away_goals ~ 3, home_goals == away_goals ~ 1, TRUE ~ 0),
+        decay_w = decay_w
       ),
     results |>
       dplyr::transmute(
@@ -492,18 +500,29 @@ apply_postmatch_learning <- function(data, db_path) {
         goals_for = away_goals,
         goals_against = home_goals,
         xg_for = dplyr::coalesce(away_xg, as.numeric(away_goals)),
-        cards = dplyr::coalesce(away_cards, 0L)
+        cards = dplyr::coalesce(away_cards, 0L),
+        points = dplyr::case_when(away_goals > home_goals ~ 3, away_goals == home_goals ~ 1, TRUE ~ 0),
+        decay_w = decay_w
       )
   ) |>
     dplyr::group_by(team) |>
     dplyr::summarise(
       learning_n = dplyr::n(),
-      learned_attack = clamp(42 + 18 * mean(xg_for, na.rm = TRUE), 35, 94),
-      learned_defence = clamp(89 - 17 * mean(goals_against, na.rm = TRUE), 35, 94),
-      learned_discipline = clamp(92 - 9 * mean(cards, na.rm = TRUE), 35, 94),
+      w_xg_for = stats::weighted.mean(xg_for, decay_w, na.rm = TRUE),
+      w_goals_for = stats::weighted.mean(goals_for, decay_w, na.rm = TRUE),
+      w_goals_against = stats::weighted.mean(goals_against, decay_w, na.rm = TRUE),
+      w_cards = stats::weighted.mean(cards, decay_w, na.rm = TRUE),
+      w_points = stats::weighted.mean(points, decay_w, na.rm = TRUE),
+      learned_attack = clamp(42 + 18 * w_xg_for + 3 * (w_goals_for - w_xg_for), 35, 94),
+      learned_defence = clamp(89 - 17 * w_goals_against, 35, 94),
+      learned_discipline = clamp(92 - 9 * w_cards, 35, 94),
+      learned_transition = clamp(50 + 15 * w_xg_for, 40, 95),
+      learned_pressing = clamp(88 - 12 * w_goals_against, 40, 95),
+      learned_form_points = w_points,
+      learned_1h_ratio = clamp(.42 + .015 * (w_xg_for - 1.3), .36, .52),
       .groups = "drop"
     ) |>
-    dplyr::mutate(learning_weight = pmin(.35, .05 * learning_n))
+    dplyr::mutate(learning_weight = pmin(.40, .06 * learning_n))
 
   data$teams <- data$teams |>
     dplyr::left_join(team_rows, by = "team") |>
@@ -511,9 +530,13 @@ apply_postmatch_learning <- function(data, db_path) {
       learning_weight = dplyr::coalesce(learning_weight, 0),
       attack = round((1 - learning_weight) * attack + learning_weight * dplyr::coalesce(learned_attack, attack)),
       defence = round((1 - learning_weight) * defence + learning_weight * dplyr::coalesce(learned_defence, defence)),
-      discipline = round((1 - learning_weight) * discipline + learning_weight * dplyr::coalesce(learned_discipline, discipline))
+      discipline = round((1 - learning_weight) * discipline + learning_weight * dplyr::coalesce(learned_discipline, discipline)),
+      transition = round((1 - learning_weight) * transition + learning_weight * dplyr::coalesce(learned_transition, transition)),
+      pressing = round((1 - learning_weight) * pressing + learning_weight * dplyr::coalesce(learned_pressing, pressing)),
+      prior_ppg = round((1 - learning_weight) * prior_ppg + learning_weight * dplyr::coalesce(learned_form_points, prior_ppg), 2),
+      learned_1h_ratio = dplyr::coalesce(learned_1h_ratio, .45)
     ) |>
-    dplyr::select(-dplyr::any_of(c("learning_n", "learned_attack", "learned_defence", "learned_discipline", "learning_weight")))
+    dplyr::select(-dplyr::any_of(c("learning_n", "w_xg_for", "w_goals_for", "w_goals_against", "w_cards", "w_points", "learned_attack", "learned_defence", "learned_discipline", "learned_transition", "learned_pressing", "learned_form_points", "learning_weight")))
 
   data$learning_matches <- nrow(results)
   data
@@ -543,7 +566,8 @@ eligible_prediction_results <- function(db_path) {
     if (!"result_source" %in% names(results)) results$result_source <- rep(NA_character_, nrow(results))
     analyses <- DBI::dbGetQuery(con, "SELECT * FROM analyses ORDER BY created_at")
     if (nrow(results) == 0 || nrow(analyses) == 0) return(tibble::tibble())
-    analyses |>
+    
+    joined <- analyses |>
       dplyr::inner_join(results, by = "fixture_id") |>
       dplyr::mutate(
         analysis_time = parse_model_timestamp(created_at),
@@ -552,7 +576,45 @@ eligible_prediction_results <- function(db_path) {
       dplyr::filter(!is.na(analysis_time), !is.na(result_time), analysis_time <= result_time) |>
       dplyr::group_by(fixture_id) |>
       dplyr::slice_max(analysis_time, n = 1, with_ties = FALSE) |>
-      dplyr::ungroup() |>
+      dplyr::ungroup()
+
+    if (nrow(joined) == 0) return(tibble::tibble())
+
+    score_eval <- purrr::map_dfr(seq_len(nrow(joined)), function(i) {
+      row <- joined[i, ]
+      ehg <- row$expected_home_goals
+      eag <- row$expected_away_goals
+      m <- score_probability_matrix(ehg, eag, max_goals = 6L)
+      top_scores <- top_exact_scores(m, n = 3L)
+      htft_res <- half_time_and_htft_probabilities(ehg, eag)
+
+      actual_score_str <- paste0(row$home_goals, "–", row$away_goals)
+      pred_score_str <- top_scores$score[[1]]
+      top3_scores_vec <- top_scores$score
+
+      exact_match <- (actual_score_str == pred_score_str)
+      top3_match <- (actual_score_str %in% top3_scores_vec)
+      actual_score_prob <- stats::dpois(row$home_goals, ehg) * stats::dpois(row$away_goals, eag)
+      score_loss <- -log(pmax(actual_score_prob, 1e-6))
+      goal_err <- (abs(ehg - row$home_goals) + abs(eag - row$away_goals)) / 2
+
+      tibble::tibble(
+        pred_top1_score = pred_score_str,
+        pred_top1_prob = top_scores$probability[[1]],
+        pred_top3_summary = paste0(top_scores$score, " (%", round(top_scores$probability * 100, 1), ")", collapse = ", "),
+        pred_htft = htft_res$most_likely_htft$code,
+        pred_htft_prob = htft_res$most_likely_htft$probability,
+        pred_ht_score = htft_res$most_likely_ht_score$score,
+        actual_score = actual_score_str,
+        exact_score_match = exact_match,
+        top3_score_match = top3_match,
+        p_actual_score = actual_score_prob,
+        score_log_loss = score_loss,
+        goal_mae = goal_err
+      )
+    })
+
+    joined <- dplyr::bind_cols(joined, score_eval) |>
       dplyr::mutate(
         actual = dplyr::case_when(home_goals > away_goals ~ "home", home_goals < away_goals ~ "away", TRUE ~ "draw"),
         predicted = dplyr::case_when(
@@ -565,17 +627,48 @@ eligible_prediction_results <- function(db_path) {
         p_actual = dplyr::case_when(actual == "home" ~ home_win, actual == "draw" ~ draw, TRUE ~ away_win),
         brier = ((home_win - (actual == "home"))^2 + (draw - (actual == "draw"))^2 + (away_win - (actual == "away"))^2) / 3
       )
+    joined
   })
 }
 
 model_scorecard <- function(db_path) {
   joined <- eligible_prediction_results(db_path)
   if (nrow(joined) == 0) {
-    return(tibble::tibble(metric = c("1X2 isabeti", "Brier skoru", "Log loss", "Kapsanan maç"), value = c(NA, NA, NA, 0)))
+    return(tibble::tibble(
+      metric = c(
+        "Tam Skor İsabeti (Top-1)",
+        "Top-3 Skor Kapsama Oranı",
+        "1X2 isabeti",
+        "Ortalama Gol Hatası (MAE)",
+        "Skor Log-Loss",
+        "Brier skoru",
+        "Log loss",
+        "Kapsanan maç"
+      ),
+      value = c(NA, NA, NA, NA, NA, NA, NA, 0)
+    ))
   }
   tibble::tibble(
-    metric = c("1X2 isabeti", "Brier skoru", "Log loss", "Kapsanan maç"),
-    value = c(mean(joined$correct), mean(joined$brier), mean(-log(pmax(joined$p_actual, 1e-6))), nrow(joined))
+    metric = c(
+      "Tam Skor İsabeti (Top-1)",
+      "Top-3 Skor Kapsama Oranı",
+      "1X2 isabeti",
+      "Ortalama Gol Hatası (MAE)",
+      "Skor Log-Loss",
+      "Brier skoru",
+      "Log loss",
+      "Kapsanan maç"
+    ),
+    value = c(
+      mean(joined$exact_score_match),
+      mean(joined$top3_score_match),
+      mean(joined$correct),
+      mean(joined$goal_mae),
+      mean(joined$score_log_loss),
+      mean(joined$brier),
+      mean(-log(pmax(joined$p_actual, 1e-6))),
+      nrow(joined)
+    )
   )
 }
 
@@ -588,13 +681,23 @@ prediction_result_history <- function(db_path, limit = 20L) {
     dplyr::slice_head(n = as.integer(limit)) |>
     dplyr::transmute(
       Maç = paste(home_team.x, "—", away_team.x),
+      `Gerçek Skor` = actual_score,
+      `Model 1. Skoru` = paste0(pred_top1_score, " (%", round(pred_top1_prob * 100, 1), ")"),
+      `Top-3 Skor Tahminleri` = pred_top3_summary,
+      `Skor İsabeti` = dplyr::case_when(
+        exact_score_match ~ "Tam İsabet (1.)",
+        top3_score_match ~ "Top-3 İçinde",
+        TRUE ~ "Farklı Skor"
+      ),
+      Doğru = ifelse(correct, "Evet", "Hayır"),
       Tahmin = unname(outcome_label[predicted]),
       Gerçek = unname(outcome_label[actual]),
-      Doğru = ifelse(correct, "Evet", "Hayır"),
-      `Gerçeğe verilen olasılık` = scales::percent(p_actual, accuracy = .1),
+      `1X2 Tahmin / Gerçek` = paste0(unname(outcome_label[predicted]), " / ", unname(outcome_label[actual])),
+      `Tahmin İY/MS` = paste0(pred_htft, " (İY: ", pred_ht_score, ")"),
+      `Gol Hatası` = round(goal_mae, 2),
       Brier = format(round(brier, 3), nsmall = 3),
       Kaynak = dplyr::coalesce(result_source, "Bilinmiyor"),
-      `Tahmin zamanı` = format(analysis_time, "%d.%m.%Y %H:%M")
+      `Tahmin Zamanı` = format(analysis_time, "%d.%m.%Y %H:%M")
     )
 }
 
@@ -602,7 +705,170 @@ scorecard_interpretation <- function(db_path) {
   score <- model_scorecard(db_path)
   n <- as.integer(score$value[score$metric == "Kapsanan maç"])
   if (n == 0L) return("Henüz sonuçtan önce kaydedilmiş bir tahmin ile gerçek sonuç eşleşmedi.")
-  if (n < 30L) return(paste0(n, " maç var: doğruluk değeri henüz çok oynak; karar vermek için erken."))
-  if (n < 100L) return(paste0(n, " maç var: ilk kalibrasyon sinyali oluştu, ama güvenilir kıyas için örneklem hâlâ sınırlı."))
-  paste0(n, " maçlık ileriye dönük örneklem: 1X2 isabetiyle birlikte Brier ve log loss'u da izlemek gerekir.")
+  if (n < 30L) return(paste0(n, " maç analiz edildi: Tam skor ve İY/MS olasılıkları izleniyor; örneklem arttıkça skor kalibrasyonu netleşecektir."))
+  if (n < 100L) return(paste0(n, " maçlık kalibrasyon: Top-3 skor kapsama oranı ve gol MAE değeri modelin skor isabetini yansıtır."))
+  paste0(n, " maçlık büyük örneklem: Skor Log-Loss ve Top-3 kapsama oranları üzerinden skor bazlı model ağırlıkları optimize edilmektedir.")
 }
+
+team_learning_summary <- function(db_path) {
+  base_teams <- if (exists("super_lig_teams", mode = "function")) super_lig_teams() else tibble::tibble()
+  if (nrow(base_teams) == 0) return(tibble::tibble())
+
+  results <- with_store(db_path, function(con) {
+    DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date DESC")
+  })
+  if (nrow(results) == 0) {
+    return(base_teams |>
+      dplyr::transmute(
+        team_id, team, short, coach,
+        matches_played = 0L,
+        base_attack = attack, current_attack = attack, attack_delta = 0,
+        base_defence = defence, current_defence = defence, defence_delta = 0,
+        base_discipline = discipline, current_discipline = discipline, discipline_delta = 0,
+        avg_goals_for = NA_real_, avg_goals_against = NA_real_, avg_xg_for = NA_real_, avg_cards = NA_real_,
+        learning_weight = 0
+      ))
+  }
+
+  known_teams <- base_teams$team
+  results <- results |>
+    dplyr::filter(home_team %in% known_teams, away_team %in% known_teams)
+
+  team_rows <- dplyr::bind_rows(
+    results |>
+      dplyr::transmute(
+        team = home_team,
+        goals_for = home_goals,
+        goals_against = away_goals,
+        xg_for = dplyr::coalesce(home_xg, as.numeric(home_goals)),
+        cards = dplyr::coalesce(home_cards, 0L)
+      ),
+    results |>
+      dplyr::transmute(
+        team = away_team,
+        goals_for = away_goals,
+        goals_against = home_goals,
+        xg_for = dplyr::coalesce(away_xg, as.numeric(away_goals)),
+        cards = dplyr::coalesce(away_cards, 0L)
+      )
+  ) |>
+    dplyr::group_by(team) |>
+    dplyr::summarise(
+      matches_played = dplyr::n(),
+      avg_goals_for = round(mean(goals_for, na.rm = TRUE), 2),
+      avg_goals_against = round(mean(goals_against, na.rm = TRUE), 2),
+      avg_xg_for = round(mean(xg_for, na.rm = TRUE), 2),
+      avg_cards = round(mean(cards, na.rm = TRUE), 1),
+      pure_learned_attack = round(clamp(42 + 18 * mean(xg_for, na.rm = TRUE) + 3 * (mean(goals_for, na.rm = TRUE) - mean(xg_for, na.rm = TRUE)), 35, 94)),
+      pure_learned_defence = round(clamp(89 - 17 * mean(goals_against, na.rm = TRUE), 35, 94)),
+      pure_learned_discipline = round(clamp(92 - 9 * mean(cards, na.rm = TRUE), 35, 94)),
+      learned_1h_ratio = round(clamp(.42 + .015 * (mean(xg_for, na.rm = TRUE) - 1.3), .36, .52), 3),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(learning_weight = pmin(.40, .06 * matches_played))
+
+  base_teams |>
+    dplyr::left_join(team_rows, by = "team") |>
+    dplyr::mutate(
+      matches_played = dplyr::coalesce(matches_played, 0L),
+      learning_weight = dplyr::coalesce(learning_weight, 0),
+      current_attack = round((1 - learning_weight) * attack + learning_weight * dplyr::coalesce(pure_learned_attack, attack)),
+      current_defence = round((1 - learning_weight) * defence + learning_weight * dplyr::coalesce(pure_learned_defence, defence)),
+      current_discipline = round((1 - learning_weight) * discipline + learning_weight * dplyr::coalesce(pure_learned_discipline, discipline)),
+      attack_delta = current_attack - attack,
+      defence_delta = current_defence - defence,
+      discipline_delta = current_discipline - discipline,
+      `1H Tempo Payı` = scales::percent(dplyr::coalesce(learned_1h_ratio, .45), accuracy = .1)
+    ) |>
+    dplyr::transmute(
+      team_id, team, short, coach,
+      matches_played,
+      base_attack = attack, current_attack, attack_delta,
+      base_defence = defence, current_defence, defence_delta,
+      base_discipline = discipline, current_discipline, discipline_delta,
+      avg_goals_for, avg_goals_against, avg_xg_for, avg_cards,
+      `1H Tempo Payı`,
+      learning_weight
+    ) |>
+    dplyr::arrange(dplyr::desc(matches_played), dplyr::desc(current_attack))
+}
+
+finished_matches_detailed <- function(db_path, limit = 50L) {
+  with_store(db_path, function(con) {
+    results <- DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date DESC")
+    if (nrow(results) == 0) return(tibble::tibble())
+    provenance <- DBI::dbGetQuery(con, "SELECT fixture_id, source AS result_source FROM result_provenance")
+    if (nrow(provenance) > 0) results <- dplyr::left_join(results, provenance, by = "fixture_id")
+    if (!"result_source" %in% names(results)) results$result_source <- rep(NA_character_, nrow(results))
+
+    analyses <- DBI::dbGetQuery(con, "SELECT * FROM analyses ORDER BY created_at")
+    if (nrow(analyses) > 0) {
+      eligible <- analyses |>
+        dplyr::inner_join(results |> dplyr::select(fixture_id, match_date), by = "fixture_id") |>
+        dplyr::mutate(
+          analysis_time = parse_model_timestamp(created_at),
+          result_time = parse_model_timestamp(match_date, date_at_end_of_day = TRUE)
+        ) |>
+        dplyr::filter(!is.na(analysis_time), !is.na(result_time), analysis_time <= result_time) |>
+        dplyr::group_by(fixture_id) |>
+        dplyr::slice_max(analysis_time, n = 1, with_ties = FALSE) |>
+        dplyr::ungroup() |>
+        dplyr::transmute(
+          fixture_id,
+          pred_home_win = home_win, pred_draw = draw, pred_away_win = away_win,
+          pred_exp_hg = expected_home_goals, pred_exp_ag = expected_away_goals,
+          pred_outcome = dplyr::case_when(
+            home_win >= draw & home_win >= away_win ~ "home",
+            away_win >= home_win & away_win >= draw ~ "away",
+            TRUE ~ "draw"
+          )
+        )
+      results <- dplyr::left_join(results, eligible, by = "fixture_id")
+    } else {
+      results$pred_outcome <- rep(NA_character_, nrow(results))
+    }
+
+    parsed_date <- parse_model_timestamp(results$match_date)
+    outcome_label <- c(home = "Ev", draw = "Beraberlik", away = "Deplasman")
+    results |>
+      dplyr::mutate(
+        actual_outcome = dplyr::case_when(
+          home_goals > away_goals ~ "home",
+          home_goals < away_goals ~ "away",
+          TRUE ~ "draw"
+        ),
+        is_correct = ifelse(is.na(pred_outcome), NA, pred_outcome == actual_outcome),
+        tarih = format(parsed_date, "%d.%m.%Y %H:%M")
+      ) |>
+      dplyr::arrange(dplyr::desc(parsed_date)) |>
+      dplyr::slice_head(n = as.integer(limit)) |>
+      dplyr::transmute(
+        Tarih = dplyr::coalesce(tarih, match_date),
+        Maç = paste(home_team, "—", away_team),
+        Skor = paste0(home_goals, " – ", away_goals),
+        `xG (Ev-Dep)` = ifelse(is.na(home_xg) | is.na(away_xg), "—", paste0(round(home_xg, 2), " – ", round(away_xg, 2))),
+        `Kart (Ev-Dep)` = ifelse(is.na(home_cards) | is.na(away_cards), "—", paste0(home_cards, " – ", away_cards)),
+        `Model Tahmini` = ifelse(is.na(pred_outcome), "Tahmin dondurulmadı", unname(outcome_label[pred_outcome])),
+        `İsabet` = dplyr::case_when(
+          is.na(is_correct) ~ "—",
+          is_correct ~ "Evet (Doğru)",
+          TRUE ~ "Hayır (Yanlış)"
+        ),
+        Kaynak = dplyr::coalesce(result_source, "Football-Data.co.uk")
+      )
+  }) |>
+    tibble::as_tibble()
+}
+
+match_actual_result <- function(fixture_id, db_path) {
+  if (is.null(fixture_id) || !nzchar(fixture_id)) return(NULL)
+  with_store(db_path, function(con) {
+    res <- DBI::dbGetQuery(con, "SELECT * FROM postmatch_results WHERE fixture_id = ? LIMIT 1", params = list(as.character(fixture_id)))
+    if (nrow(res) == 0) return(NULL)
+    prov <- DBI::dbGetQuery(con, "SELECT source FROM result_provenance WHERE fixture_id = ? LIMIT 1", params = list(as.character(fixture_id)))
+    res$source <- if (nrow(prov) > 0) prov$source[[1]] else "Football-Data.co.uk"
+    tibble::as_tibble(res[1, ])
+  })
+}
+
+

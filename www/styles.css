@@ -131,10 +131,18 @@ p { color: var(--muted); line-height: 1.6; }
 .main-canvas { min-width: 0; padding: 34px clamp(20px, 4vw, 54px) 70px; }
 .match-header { justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; }
 .match-header h1 { margin: 9px 0 10px; }
-.match-header p { margin: 0; }
-.score-call { min-width: 142px; text-align: center; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.score-call-container { display: flex; gap: 12px; align-items: stretch; }
+.score-call { min-width: 155px; text-align: center; padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .score-call span, .score-call small { display: block; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; }
-.score-call strong { display: block; color: var(--gold); font-size: 2.3rem; line-height: 1.1; margin: 4px 0; }
+.score-call strong { display: block; color: var(--gold); font-size: 2.1rem; line-height: 1.1; margin: 4px 0; }
+.score-call-actual { background: linear-gradient(135deg, #13221b 0%, #172a22 100%); border-color: #2b4c3e; }
+.score-call-actual .actual-score-text { color: #5fe3c6; font-size: 2.1rem; }
+.score-call-actual .actual-meta { color: #87bdae; text-transform: none; font-size: .72rem; }
+.score-header-flex { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.result-badge { font-size: .62rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; letter-spacing: .02em; }
+.result-badge.badge-exact { background: #d7a84b; color: #14130d; }
+.result-badge.badge-correct { background: #1f6b5a; color: #7cf0d7; }
+.result-badge.badge-incorrect { background: #442521; color: #f29c91; }
 .metric-strip, .style-card-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .metric-card { position: relative; overflow: hidden; padding: 18px; min-height: 130px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
 .metric-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #65736b; }

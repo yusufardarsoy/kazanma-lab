@@ -118,3 +118,79 @@ test_that("odds comparison removes margin and flags stale scorer row", {
   expect_false(petkovic$active)
   expect_equal(petkovic$signal, "Kadro dışı / bayat oran")
 })
+
+test_that("team_learning_summary and finished_matches_detailed compute correctly", {
+  db_path <- tempfile(fileext = ".sqlite")
+  initialize_store(db_path)
+  
+  # Empty store summary
+  empty_summary <- team_learning_summary(db_path)
+  expect_equal(nrow(empty_summary), 18)
+  expect_true(all(empty_summary$matches_played == 0))
+  expect_true(all(empty_summary$attack_delta == 0))
+  
+  # Add sample match result
+  sample_results <- tibble::tibble(
+    fixture_id = "317790",
+    match_date = "2026-08-14T21:30:00+0300",
+    home_team = "Galatasaray",
+    away_team = "Çorum FK",
+    home_goals = 2L,
+    away_goals = 2L,
+    home_xg = 2.90,
+    away_xg = 0.61,
+    home_cards = 1L,
+    away_cards = 1L
+  )
+  import_postmatch_results(sample_results, db_path)
+  
+  summary <- team_learning_summary(db_path)
+  expect_equal(nrow(summary), 18)
+  gs <- summary |> dplyr::filter(team == "Galatasaray")
+  corum <- summary |> dplyr::filter(team == "Çorum FK")
+  
+  expect_equal(gs$matches_played, 1)
+  expect_equal(corum$matches_played, 1)
+  expect_equal(gs$avg_xg_for, 2.90)
+  expect_equal(corum$avg_xg_for, 0.61)
+  expect_gt(gs$learning_weight, 0)
+  
+  detailed <- finished_matches_detailed(db_path)
+  expect_equal(nrow(detailed), 1)
+  expect_equal(detailed$Maç, "Galatasaray — Çorum FK")
+  expect_equal(detailed$Skor, "2 – 2")
+  expect_equal(detailed$`xG (Ev-Dep)`, "2.9 – 0.61")
+  
+  # Check plot generation
+  plot_obj <- plot_team_learning_evolution(summary)
+  expect_s3_class(plot_obj, "ggplot")
+})
+
+test_that("exact score ranking and HT/FT probability engine works", {
+  m <- score_probability_matrix(1.85, 1.10, max_goals = 6L)
+  top_scores <- top_exact_scores(m, n = 8L)
+  
+  expect_equal(nrow(top_scores), 8)
+  expect_true(all(c("score", "probability", "fair_odds", "outcome", "rank") %in% names(top_scores)))
+  expect_true(all(top_scores$fair_odds > 1))
+  expect_true(all(diff(top_scores$probability) <= 0)) # descending order
+  
+  htft <- half_time_and_htft_probabilities(1.85, 1.10, 75, 68)
+  expect_true(is.list(htft))
+  expect_equal(nrow(htft$htft_table), 9)
+  expect_true(all(htft$htft_table$code %in% c("0/1", "1/1", "0/0", "1/0", "0/2", "2/2", "2/0", "1/2", "2/1")))
+  expect_true(all(htft$htft_table$fair_odds > 1))
+  
+  # Test predictions containing top_scores and htft
+  pred <- build_prediction(super_lig_match_data("317790"))
+  expect_true(!is.null(pred$top_scores))
+  expect_true(!is.null(pred$htft))
+  
+  p1 <- plot_top_scores(pred)
+  expect_s3_class(p1, "ggplot")
+  
+  p2 <- plot_htft_probabilities(pred)
+  expect_s3_class(p2, "ggplot")
+})
+
+

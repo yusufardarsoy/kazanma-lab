@@ -292,7 +292,7 @@ super_lig_match_data <- function(fixture_id = NULL) {
   )
 }
 
-super_lig_fixture_choices <- function(team_filter = NULL, scheduled_only = FALSE) {
+super_lig_fixture_choices <- function(team_filter = NULL, scheduled_only = FALSE, db_path = NULL) {
   fixtures <- super_lig_fixtures()
   teams <- super_lig_teams() |> dplyr::select(team_id, team)
   choices <- fixtures |>
@@ -303,10 +303,34 @@ super_lig_fixture_choices <- function(team_filter = NULL, scheduled_only = FALSE
     choices <- choices |> dplyr::filter(home_team_id == team_id | away_team_id == team_id)
   }
   if (isTRUE(scheduled_only)) choices <- choices |> dplyr::filter(scheduled)
+
+  if (!is.null(db_path) && file.exists(db_path) && exists("with_store", mode = "function")) {
+    results <- tryCatch({
+      with_store(db_path, function(con) {
+        DBI::dbGetQuery(con, "SELECT fixture_id, home_goals, away_goals FROM postmatch_results")
+      })
+    }, error = function(e) NULL)
+    if (!is.null(results) && nrow(results) > 0) {
+      choices <- choices |>
+        dplyr::left_join(results, by = "fixture_id")
+    }
+  }
+
+  if (!"home_goals" %in% names(choices)) {
+    choices$home_goals <- rep(NA_integer_, nrow(choices))
+    choices$away_goals <- rep(NA_integer_, nrow(choices))
+  }
+
   choices <- choices |>
     dplyr::mutate(
+      has_result = !is.na(home_goals) & !is.na(away_goals),
       date_label = dplyr::if_else(scheduled, format(kickoff, "%d.%m %H:%M"), "tarih bekleniyor"),
-      label = paste0(round, ". hafta · ", date_label, " · ", home_team, " — ", away_team)
+      match_label = dplyr::if_else(
+        has_result,
+        paste0(home_team, " ", home_goals, "–", away_goals, " ", away_team, " (MS)"),
+        paste0(home_team, " — ", away_team)
+      ),
+      label = paste0(round, ". hafta · ", date_label, " · ", match_label)
     )
   stats::setNames(choices$fixture_id, choices$label)
 }

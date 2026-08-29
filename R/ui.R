@@ -49,8 +49,8 @@ dashboard_ui <- function(config) {
         div(class = "sidebar-label", "ÇALIŞMA ALANI"),
         radioButtons(
           "section", NULL,
-          choiceNames = c("Maç merkezi", "Oran radarı", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası"),
-          choiceValues = c("overview", "odds", "lineups", "styles", "teams", "players", "memory"),
+          choiceNames = c("Maç merkezi", "Oran radarı", "Muhtemel 11", "Stil savaşı", "Süper Lig DNA", "Oyuncu radarları", "Model hafızası", "Literatür & Teori"),
+          choiceValues = c("overview", "odds", "lineups", "styles", "teams", "players", "memory", "knowledge"),
           selected = "overview"
         ),
         div(class = "sidebar-divider"),
@@ -61,7 +61,7 @@ dashboard_ui <- function(config) {
         ),
         selectizeInput(
           "fixture_id", "Maç",
-          choices = super_lig_fixture_choices(),
+          choices = super_lig_fixture_choices(db_path = config$db_path),
           options = list(placeholder = "Takım veya maç ara", maxOptions = 306)
         ),
         actionButton("run_analysis", "Tahmini kaydet", class = "btn-primary btn-block"),
@@ -89,8 +89,27 @@ overview_ui <- function() {
     uiOutput("overview_odds_teaser"),
     div(
       class = "two-column",
-      div(class = "panel", plotOutput("outcome_plot", height = 340)),
-      div(class = "panel", plotOutput("score_plot", height = 340))
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "KESİN SKOR SIRALAMASI"),
+        h3("En Olası Kesin Skor Tahminleri"),
+        p("Modelin hesapladığı Poisson gol dağılımına göre en yüksek olasılıklı 8 skor."),
+        plotOutput("top_scores_plot", height = 360),
+        div(style = "margin-top: 14px;", tableOutput("top_scores_table"))
+      ),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "İLK YARI / MAÇ SONU"),
+        h3("İY/MS Kombinasyon Olasılıkları"),
+        p("İlk yarı temposu ve ikinci yarı gol beklentilerine göre 9 senaryonun ortak olasılıkları."),
+        plotOutput("htft_plot", height = 360),
+        div(style = "margin-top: 14px;", tableOutput("htft_table"))
+      )
+    ),
+    div(
+      class = "two-column",
+      div(class = "panel", plotOutput("score_plot", height = 340)),
+      div(class = "panel", plotOutput("outcome_plot", height = 340))
     ),
     div(
       class = "two-column tactical-row",
@@ -103,8 +122,8 @@ overview_ui <- function() {
       div(
         class = "panel",
         div(class = "panel-kicker", "MODEL NOTU"),
-        h3("Bu tahmini nasıl okumalı?") ,
-        p("Olasılıklar kesin sonuç değildir. İlk 11, sakatlık, oran ve son dakika rol değişimleri geldikçe tahmin yeniden hesaplanır."),
+        h3("Bu tahmini nasıl okumalı?"),
+        p("Olasılıklar takım gücü, taktik eşleşme ve tempo parametrelerinden türetilir. Biten maçlar hafızaya işlendikçe model skor dağılımlarını yeniden kalibre eder."),
         uiOutput("model_note")
       )
     )
@@ -192,7 +211,33 @@ players_ui <- function() {
 
 memory_ui <- function() {
   tagList(
-    div(class = "section-heading", div(class = "eyebrow", "LEARNING LOOP"), h1("Model hafızası"), p("Her maç sonrası tahmin–gerçekleşen farkını kaydeder, kalibrasyonu izler ve yeni ağırlıklara veri sağlar.")),
+    div(
+      class = "section-heading",
+      div(class = "eyebrow", "LEARNING LOOP & POST-MATCH INTELLIGENCE"),
+      h1("Model hafızası & Biten maçlar"),
+      p("Biten maçların skorlarını, xG ve kart istatistiklerini izler; modelin bu sonuçlardan öğrenerek takımların hücum/savunma güçlerini nasıl güncellediğini gösterir.")
+    ),
+    uiOutput("memory_hero_cards"),
+    div(
+      class = "panel",
+      div(class = "panel-kicker", "MODEL ÖĞRENME EVRİMİ"),
+      h3("Biten maçlar sonrası güncellenen takım güçleri"),
+      p("Gri nokta sezon başı öncülünü; renkli ok ve nokta ise biten maçların (xG, goller, kartlar) modele ağırlıklı etkisiyle oluşan güncel seviyeyi gösterir."),
+      plotOutput("learning_evolution_plot", height = 480)
+    ),
+    div(
+      class = "panel",
+      div(class = "panel-kicker", "GÜNCEL TAKIM STİLLERİ VE FORM TABLOSU"),
+      h3("Takım bazında öğrenilen hücum, savunma ve disiplin puanları"),
+      tableOutput("team_learning_table")
+    ),
+    div(
+      class = "panel",
+      div(class = "panel-kicker", "TAMAMLANAN MAÇLAR KATALOĞU"),
+      h3("Biten maçlar, gerçekleşen istatistikler ve tahmin durumu"),
+      p("Maç sonu gerçek skorlar, xG ve kart verileri otomatik veya manuel olarak buraya işlenir."),
+      tableOutput("finished_matches_table")
+    ),
     div(
       class = "two-column",
       div(
@@ -215,16 +260,15 @@ memory_ui <- function() {
       ),
       div(class = "panel", h3("Model sağlık kartı"), tableOutput("scorecard_table"), uiOutput("accuracy_note"))
     ),
-    div(class = "panel", h3("Otomatik veri görevi"), tableOutput("automation_health_table"), uiOutput("automation_note")),
-    div(class = "panel", h3("Tahmin — gerçek sonuç karşılaştırması"), tableOutput("comparison_table")),
+    div(class = "panel", div(class = "panel-kicker", "MODEL DEĞERLENDİRME"), h3("Skor & İY/MS Tahminleri — Gerçek Sonuç Karşılaştırması"), p("Dondurulmuş tahminlerin gerçekleşen kesin skor, Top-3 skor ve İY/MS ile doğruluk karşılaştırması."), tableOutput("comparison_table")),
     div(class = "panel", h3("Son analizler"), tableOutput("history_table")),
     div(
       class = "panel roadmap-panel",
-      h3("Öğrenme sırası"),
-      div(class = "roadmap-step", span("01"), div(strong("Tahmin anı"), p("Olasılıklar ve veri sürümü dondurulur."))),
-      div(class = "roadmap-step", span("02"), div(strong("Maç sonu"), p("Skor, xG, kart ve oyuncu olayları eklenir."))),
-      div(class = "roadmap-step", span("03"), div(strong("Kalibrasyon"), p("Brier ve log loss ile model hatası ölçülür."))),
-      div(class = "roadmap-step", span("04"), div(strong("Yeniden eğitim"), p("Takım/oyuncu ağırlıkları zaman çürümesiyle güncellenir.")))
+      h3("Öğrenme döngüsü"),
+      div(class = "roadmap-step", span("01"), div(strong("Tahmin anı"), p("Olasılıklar ve veri sürümü maç öncesinde dondurulur."))),
+      div(class = "roadmap-step", span("02"), div(strong("Maç sonu"), p("Skor, xG, kart ve olay verileri hafızaya işlenir."))),
+      div(class = "roadmap-step", span("03"), div(strong("Kalibrasyon"), p("Brier ve log loss ile model tahmini ölçülür."))),
+      div(class = "roadmap-step", span("04"), div(strong("Dinamik Güncelleme"), p("Takım hücum/savunma güçleri ve oyun stilleri güncellenir.")))
     )
   )
 }
@@ -247,3 +291,85 @@ lineup_team_ui <- function(team, xi) {
     )
   )
 }
+
+knowledge_ui <- function() {
+  tagList(
+    div(
+      class = "section-heading",
+      div(class = "eyebrow", "MATHEMATICAL FOUNDATIONS & FOOTBALL PAPERS"),
+      h1("Modelin Bilimsel & İstatistiksel Bilgi Tabanı"),
+      p("Kazanma Lab, rastgele sayı üreten bir yapı değil; dünyanın önde gelen spor analitiği ve futbol modelleme makalelerinde kanıtlanmış matematiksel teoremleri temel alan deterministik bir tahmin motorudur.")
+    ),
+    div(
+      class = "two-column",
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "TEMEL MAKALE 1 · DÜŞÜK SKOR KALİBRASYONU"),
+        h3("Dixon & Coles (1997) Modeli"),
+        p(strong("Makale:"), " Modelling Association Football Scores and Inefficiencies in the Football Betting Market (Journal of the Royal Statistical Society)."),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Düşük Skor Bağımlılığı (rho = -0.085):"), " Standart Poisson dağılımı 0-0, 1-1 ve 0/1 skorlarını eksik hesaplar. Dixon-Coles tau düzeltmesi ile bu skorların karşılıklı taktiksel kilitlenme olasılığı yükseltilir.")
+        ),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Üstel Zaman Ağırlıklandırması (exp(-xi * dt)):"), " Son haftalarda oynanan maçların takım güçleri ve stilleri üzerindeki öğrenme etkisi, aylar önceki maçlara göre üstel olarak daha ağırdır.")
+        )
+      ),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "TEMEL MAKALE 2 · İLK YARI / MAÇ SONU"),
+        h3("Karlis & Ntzoufras (2003 / 2008) İki Aşamalı Dağılım"),
+        p(strong("Makale:"), " Analysis of sports data by using bivariate Poisson models & Bayesian modelling of Half-Time/Full-Time outcomes."),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("İlk Yarı / İkinci Yarı Dinamiği:"), " Futbol maçlarında gollerin ~%44'ü ilk yarıda, ~%56'sı ikinci yarıda (yorgunluk, taktiksel risk alma ve oyuncu değişiklikleri nedeniyle) atılır.")
+        ),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("9 Ortak İY/MS Olasılık Matrisi:"), " 0/1, 1/1, 0/0, 1/0 gibi senaryolar bağımsız değil; 1. yarı skoru ile 2. yarı gol beklentisinin ortak olasılık integrali olarak hesaplanır.")
+        )
+      )
+    ),
+    div(
+      class = "two-column",
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "TEMEL MAKALE 3 · AKSİYON DEĞERLEMESİ VE TAKTİK"),
+        h3("Decroos et al. (KDD 2019) & Berrar (2019)"),
+        p(strong("Makale:"), " VAEP: Valuing Actions by Estimating Probabilities & Incorporating Game State."),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Taktiksel DNA Çakışması:"), " Takımın ön alan presi, rakibin geriden çıkarken top kaybı zaafıyla; geçiş hücumu hızı, rakibin geçiş savunması zaafıyla eşleştirilir.")
+        ),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Oyun Durumu Etkisi (Game State):"), " Öne geçen takımların savunmaya çekilme ve kontra bekleme eğilimleri takım stil parametrelerine yansıtılır.")
+        )
+      ),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "TEMEL MAKALE 4 · MODEL KALİBRASYONU & SAĞLIK"),
+        h3("Brier (1950) & Wheatcroft (2020) Doğrulama"),
+        p(strong("Makale:"), " Evaluating the performance of football score prediction models & Rank Probability Score."),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Çok Boyutlu Brier Skoru & Log-Loss:"), " Modelin başarısı sadece 'bildi/bilmedi' ile değil, gerçekleşen kesin skora atanan olasılığın güvenilirliği ve logaritmik kaybı üzerinden her maç kalibre edilir.")
+        ),
+        div(
+          class = "insight-item",
+          div(class = "insight-dot"),
+          p(strong("Top-3 Skor Kapsama Oranı:"), " Futbolun doğal varyansı gereği en olası 3 skorun gerçekleşen maçı karşılama gücü ölçülür.")
+        )
+      )
+    )
+  )
+}
+

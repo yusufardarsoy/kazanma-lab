@@ -3,11 +3,12 @@ app_server <- function(input, output, session, config) {
   login_message <- reactiveVal(NULL)
   failed_logins <- reactiveVal(0L)
   locked_until <- reactiveVal(as.POSIXct(NA))
-  default_fixture_id <- unname(super_lig_fixture_choices()[[1]])
+  default_fixture_id <- unname(super_lig_fixture_choices(db_path = config$db_path)[[1]])
   build_selected_prediction <- function(fixture_id = default_fixture_id) {
     data <- super_lig_match_data(fixture_id) |>
       apply_provider_context(config$db_path) |>
       apply_postmatch_learning(config$db_path)
+    data$actual_result <- match_actual_result(fixture_id, config$db_path)
     build_prediction(data)
   }
   prediction_value <- reactiveVal(build_selected_prediction())
@@ -60,13 +61,14 @@ app_server <- function(input, output, session, config) {
       teams = teams_ui(),
       players = players_ui(),
       memory = memory_ui(),
+      knowledge = knowledge_ui(),
       overview_ui()
     )
   })
 
   observeEvent(input$team_filter, {
     req(authenticated())
-    choices <- super_lig_fixture_choices(input$team_filter %||% "")
+    choices <- super_lig_fixture_choices(input$team_filter %||% "", db_path = config$db_path)
     selected <- if (length(choices)) unname(choices[[1]]) else character()
     updateSelectizeInput(session, "fixture_id", choices = choices, selected = selected, server = TRUE)
   }, ignoreInit = TRUE)
@@ -94,6 +96,8 @@ app_server <- function(input, output, session, config) {
     tryCatch({
       snapshot <- auto_sync_all_sources(config, force_public = TRUE, force_odds = FALSE)
       live_snapshot(snapshot)
+      choices <- super_lig_fixture_choices(input$team_filter %||% "", db_path = config$db_path)
+      updateSelectizeInput(session, "fixture_id", choices = choices, selected = input$fixture_id %||% default_fixture_id, server = TRUE)
       prediction_value(build_selected_prediction(input$fixture_id %||% default_fixture_id))
       showNotification(paste0("Güncelleme tamamlandı: ", snapshot$results, " sonuç ve ", snapshot$odds_rows, " oran satırı işlendi."), type = "message")
     }, error = function(e) {
@@ -131,6 +135,46 @@ app_server <- function(input, output, session, config) {
       paste0(p$fixture$round, ". hafta · tarih bekleniyor")
     }
     venue_label <- if (!is.na(p$fixture$venue[[1]]) && nzchar(p$fixture$venue[[1]])) p$fixture$venue[[1]] else "Stadyum programla açıklanacak"
+    
+    score_box <- if (!is.null(p$actual_result)) {
+      res <- p$actual_result
+      is_exact <- (p$likely_score$home == res$home_goals && p$likely_score$away == res$away_goals)
+      actual_outcome <- if (res$home_goals > res$away_goals) "home" else if (res$home_goals < res$away_goals) "away" else "draw"
+      pred_outcome <- names(which.max(p$outcomes))
+      is_outcome_correct <- (pred_outcome == actual_outcome)
+      badge_class <- if (is_exact) "badge-exact" else if (is_outcome_correct) "badge-correct" else "badge-incorrect"
+      badge_text <- if (is_exact) "Tam Skor İsabeti!" else if (is_outcome_correct) "1X2 Doğru Tahmin" else "Farklı Sonuçlandı"
+
+      xg_text <- if (!is.na(res$home_xg) && !is.na(res$away_xg)) {
+        paste0("xG: ", round(res$home_xg, 2), " – ", round(res$away_xg, 2))
+      } else {
+        "Resmi Maç Sonu"
+      }
+
+      div(
+        class = "score-call-container",
+        div(
+          class = "score-call",
+          span("Model Tahmini (En olası)"),
+          strong(paste0(p$likely_score$home, "–", p$likely_score$away)),
+          tags$small(paste("Olasılık:", scales::percent(p$likely_score$probability, accuracy = .1)))
+        ),
+        div(
+          class = "score-call score-call-actual",
+          div(class = "score-header-flex", span("Gerçekleşen Skor (MS)"), tags$span(class = paste("result-badge", badge_class), badge_text)),
+          strong(class = "actual-score-text", paste0(res$home_goals, " – ", res$away_goals)),
+          tags$small(class = "actual-meta", xg_text)
+        )
+      )
+    } else {
+      div(
+        class = "score-call",
+        span("En olası skor"),
+        strong(paste0(p$likely_score$home, "–", p$likely_score$away)),
+        tags$small(scales::percent(p$likely_score$probability, accuracy = .1))
+      )
+    }
+
     div(
       class = "match-header",
       div(
@@ -138,12 +182,7 @@ app_server <- function(input, output, session, config) {
         h1(paste(p$home$team, "—", p$away$team)),
         p(paste(venue_label, "· Model güveni", scales::percent(p$confidence, accuracy = 1)))
       ),
-      div(
-        class = "score-call",
-        span("En olası skor"),
-        strong(paste0(p$likely_score$home, "–", p$likely_score$away)),
-        tags$small(scales::percent(p$likely_score$probability, accuracy = .1))
-      )
+      score_box
     )
   })
 
@@ -151,12 +190,42 @@ app_server <- function(input, output, session, config) {
     p <- prediction()
     div(
       class = "metric-strip",
-      metric_card(paste(p$home$short, "kazanır"), scales::percent(p$outcomes[["home"]], accuracy = 1), paste("Beklenen gol", round(p$expected_goals[["home"]], 2)), "gold"),
-      metric_card("Beraberlik", scales::percent(p$outcomes[["draw"]], accuracy = 1), "90 dakika sonucu", "neutral"),
-      metric_card(paste(p$away$short, "kazanır"), scales::percent(p$outcomes[["away"]], accuracy = 1), paste("Beklenen gol", round(p$expected_goals[["away"]], 2)), "teal"),
-      metric_card("Model güveni", scales::percent(p$confidence, accuracy = 1), "Veri kapsamı + örneklem", "violet")
+      metric_card("1. En Olası Skor", paste0(p$likely_score$home, "–", p$likely_score$away), paste("Olasılık", scales::percent(p$likely_score$probability, accuracy = .1)), "gold"),
+      metric_card("En Olası İY / MS", p$htft$most_likely_htft$code, paste(p$htft$most_likely_htft$label, "·", scales::percent(p$htft$most_likely_htft$probability, accuracy = .1)), "teal"),
+      metric_card("İlk Yarı Skoru", p$htft$most_likely_ht_score$score, paste("Olasılık", scales::percent(p$htft$most_likely_ht_score$probability, accuracy = .1)), "violet"),
+      metric_card("Beklenen Gol (xG)", paste0(round(p$expected_goals[["home"]], 2), " – ", round(p$expected_goals[["away"]], 2)), paste("Model Güveni", scales::percent(p$confidence, accuracy = 1)), "neutral")
     )
   })
+
+  output$top_scores_plot <- renderPlot(plot_top_scores(prediction(), n = 8L), bg = "transparent", res = 110)
+
+  output$top_scores_table <- renderTable({
+    p <- prediction()
+    req(p$top_scores)
+    p$top_scores |>
+      dplyr::slice_head(n = 6L) |>
+      dplyr::transmute(
+        Sıra = paste0("#", rank),
+        Skor = score,
+        `Sonuç Türü` = outcome,
+        Olasılık = scales::percent(probability, accuracy = .1),
+        `Adil Oran` = format(round(fair_odds, 2), nsmall = 2)
+      )
+  }, striped = TRUE, hover = TRUE, bordered = FALSE, align = "c")
+
+  output$htft_plot <- renderPlot(plot_htft_probabilities(prediction()), bg = "transparent", res = 110)
+
+  output$htft_table <- renderTable({
+    p <- prediction()
+    req(p$htft$htft_table)
+    p$htft$htft_table |>
+      dplyr::transmute(
+        `İY/MS` = code,
+        Senaryo = label,
+        Olasılık = scales::percent(probability, accuracy = .1),
+        `Adil Oran` = format(round(fair_odds, 2), nsmall = 2)
+      )
+  }, striped = TRUE, hover = TRUE, bordered = FALSE, align = "c")
 
   output$outcome_plot <- renderPlot(plot_outcomes(prediction()), bg = "transparent", res = 110)
   output$score_plot <- renderPlot(plot_score_matrix(prediction()), bg = "transparent", res = 110)
@@ -445,4 +514,72 @@ app_server <- function(input, output, session, config) {
     run <- health$last_public_run[1, ]
     div(class = "source-note", strong(if (run$status %in% c("ok", "cached")) "Son görev kullanılabilir" else "Son görev hata verdi"), span(paste(run$source, "·", run$finished_at, "·", run$message)))
   })
+
+  team_learning_data <- reactive({
+    prediction_value()
+    team_learning_summary(config$db_path)
+  })
+
+  finished_matches_data <- reactive({
+    prediction_value()
+    finished_matches_detailed(config$db_path)
+  })
+
+  output$memory_hero_cards <- renderUI({
+    matches <- finished_matches_data()
+    summary <- team_learning_data()
+    n_matches <- nrow(matches)
+    avg_xg_val <- if (n_matches > 0 && !all(is.na(summary$avg_xg_for))) {
+      round(mean(summary$avg_xg_for, na.rm = TRUE), 2)
+    } else {
+      "—"
+    }
+    score <- model_scorecard(config$db_path)
+    accuracy_val <- score$value[score$metric == "1X2 isabeti"][[1]]
+    accuracy_text <- if (!is.na(accuracy_val)) scales::percent(accuracy_val, accuracy = .1) else "Örneklem bekleniyor"
+
+    top_evolved <- summary |> dplyr::filter(matches_played > 0)
+    top_note <- if (nrow(top_evolved) > 0) {
+      best <- top_evolved |> dplyr::slice_max(attack_delta, n = 1, with_ties = FALSE)
+      paste0(best$short, " (", ifelse(best$attack_delta >= 0, paste0("+", best$attack_delta), as.character(best$attack_delta)), " hücum)")
+    } else {
+      "—"
+    }
+
+    div(
+      class = "metric-strip",
+      metric_card("Tamamlanan maç", paste(n_matches, "maç"), "Veritabanında kayıtlı sonuç", "gold"),
+      metric_card("Ortalama xG / maç", as.character(avg_xg_val), "Gerçekleşen gol beklentisi", "teal"),
+      metric_card("1X2 tahmin isabeti", accuracy_text, "Maç önü dondurulmuş tahminler", "violet"),
+      metric_card("En çok gelişen", top_note, "Biten maç performansı sonrası", "neutral")
+    )
+  })
+
+  output$learning_evolution_plot <- renderPlot({
+    summary <- team_learning_data()
+    validate(need(nrow(summary) > 0, "Öğrenme verisi bulunamadı."))
+    plot_team_learning_evolution(summary)
+  }, bg = "transparent", res = 110)
+
+  output$team_learning_table <- renderTable({
+    summary <- team_learning_data()
+    validate(need(nrow(summary) > 0, "Öğrenme verisi bulunamadı."))
+    summary |>
+      dplyr::transmute(
+        Takım = team,
+        `Oynanan Maç` = as.integer(matches_played),
+        `Hücum (Başlangıç → Güncel)` = paste0(base_attack, " → ", current_attack, " (", ifelse(attack_delta >= 0, paste0("+", attack_delta), as.character(attack_delta)), ")"),
+        `Savunma (Başlangıç → Güncel)` = paste0(base_defence, " → ", current_defence, " (", ifelse(defence_delta >= 0, paste0("+", defence_delta), as.character(defence_delta)), ")"),
+        `Disiplin` = paste0(base_discipline, " → ", current_discipline),
+        `Maç Başı xG` = ifelse(is.na(avg_xg_for), "—", format(avg_xg_for, nsmall = 2)),
+        `Yenilen Gol / Maç` = ifelse(is.na(avg_goals_against), "—", format(avg_goals_against, nsmall = 2)),
+        `Modele Etki Payı` = scales::percent(learning_weight, accuracy = 1)
+      )
+  }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
+
+  output$finished_matches_table <- renderTable({
+    matches <- finished_matches_data()
+    if (nrow(matches) == 0) return(data.frame(Bilgi = "Henüz kaydedilmiş biten maç sonucu yok."))
+    matches
+  }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
 }

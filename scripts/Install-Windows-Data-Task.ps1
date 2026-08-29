@@ -1,11 +1,13 @@
 $ErrorActionPreference = "Stop"
 $taskName = "KazanmaLabDataSync"
-$runner = Join-Path $PSScriptRoot "Run-Data-Sync.ps1"
-if (-not (Test-Path -LiteralPath $runner)) { throw "Veri çalıştırıcısı bulunamadı: $runner" }
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$vbsRunner = Join-Path $PSScriptRoot "invisible_sync.vbs"
+if (-not (Test-Path -LiteralPath $vbsRunner)) { throw "Görünmez çalıştırıcı bulunamadı: $vbsRunner" }
 
 $action = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}"' -f $runner)
+  -Execute "wscript.exe" `
+  -Argument ('//nologo "{0}"' -f $vbsRunner) `
+  -WorkingDirectory $projectRoot
 $matchWindow = 0..16 | ForEach-Object {
   $time = [datetime]::Today.AddHours(16).AddMinutes($_ * 30)
   New-ScheduledTaskTrigger -Daily -At $time

@@ -83,6 +83,70 @@ plot_player_probability <- function(prediction, market = c("scorer", "card"), n 
     ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
 }
 
+plot_top_scores <- function(prediction, n = 8L) {
+  if (is.null(prediction$top_scores) || nrow(prediction$top_scores) == 0) return(NULL)
+  df <- prediction$top_scores |>
+    dplyr::slice_head(n = as.integer(n)) |>
+    dplyr::mutate(
+      score_label = paste0(score, "  (", scales::percent(probability, accuracy = .1), " · Oran: ", fair_odds, ")"),
+      score = factor(score, levels = rev(score)),
+      color_group = factor(outcome, levels = c("Ev Sahibi", "Beraberlik", "Deplasman"))
+    )
+
+  ggplot2::ggplot(df, ggplot2::aes(x = probability, y = score, fill = color_group)) +
+    ggplot2::geom_col(width = 0.65, show.legend = TRUE) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = score_label),
+      hjust = -0.05,
+      colour = "#F5F8F6",
+      fontface = "bold",
+      size = 3.6
+    ) +
+    ggplot2::scale_fill_manual(
+      values = c("Ev Sahibi" = "#D7A84B", "Beraberlik" = "#68756E", "Deplasman" = "#63B4A5"),
+      drop = FALSE
+    ) +
+    ggplot2::scale_x_continuous(labels = scales::percent, limits = c(0, max(df$probability) * 1.55), expand = c(0, 0)) +
+    ggplot2::labs(
+      title = "En Olası Kesin Skorlar Sıralaması",
+      subtitle = "Poisson gol dağılımından türetilen kesin skor olasılıkları ve adil oranlar",
+      x = "Skor Olasılığı",
+      y = NULL
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
+}
+
+plot_htft_probabilities <- function(prediction) {
+  if (is.null(prediction$htft$htft_table) || nrow(prediction$htft$htft_table) == 0) return(NULL)
+  df <- prediction$htft$htft_table |>
+    dplyr::mutate(
+      label_full = paste0(code, " (", label, ")"),
+      label_full = factor(label_full, levels = rev(label_full)),
+      pct_label = paste0(scales::percent(probability, accuracy = .1), "  (Oran: ", fair_odds, ")")
+    )
+
+  ggplot2::ggplot(df, ggplot2::aes(x = probability, y = label_full, fill = probability)) +
+    ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = pct_label),
+      hjust = -0.05,
+      colour = "#F5F8F6",
+      fontface = "bold",
+      size = 3.5
+    ) +
+    ggplot2::scale_fill_gradient(low = "#1F3B32", high = "#5FE3C6") +
+    ggplot2::scale_x_continuous(labels = scales::percent, limits = c(0, max(df$probability) * 1.55), expand = c(0, 0)) +
+    ggplot2::labs(
+      title = "İlk Yarı / Maç Sonu (İY/MS) Senaryo Olasılıkları",
+      subtitle = "9 farklı İY/MS kombinasyonunun ortak olasılık dağılımı ve adil oranları",
+      x = "Kombinasyon Olasılığı",
+      y = NULL
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
+}
+
 plot_odds_comparison <- function(comparison) {
   df <- comparison |>
     dplyr::filter(
@@ -111,3 +175,44 @@ plot_odds_comparison <- function(comparison) {
     theme_kazanma() +
     ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
 }
+
+plot_team_learning_evolution <- function(learning_summary) {
+  if (is.null(learning_summary) || nrow(learning_summary) == 0) return(NULL)
+  
+  df <- learning_summary |>
+    dplyr::filter(matches_played > 0)
+  if (nrow(df) == 0) {
+    df <- learning_summary |> dplyr::slice_head(n = 10)
+  }
+  
+  df_long <- dplyr::bind_rows(
+    df |> dplyr::transmute(team = short, metric = "Hücum Gücü", base = base_attack, current = current_attack, delta = attack_delta),
+    df |> dplyr::transmute(team = short, metric = "Savunma Gücü", base = base_defence, current = current_defence, delta = defence_delta)
+  ) |>
+    dplyr::mutate(
+      team = factor(team, levels = rev(unique(df$short))),
+      direction = dplyr::case_when(delta > 0 ~ "Arttı (+)", delta < 0 ~ "Azaldı (-)", TRUE ~ "Değişmedi")
+    )
+
+  ggplot2::ggplot(df_long, ggplot2::aes(y = team)) +
+    ggplot2::geom_segment(
+      ggplot2::aes(x = base, xend = current, yend = team, colour = direction),
+      linewidth = 1.2,
+      arrow = ggplot2::arrow(length = ggplot2::unit(0.18, "cm"), type = "closed")
+    ) +
+    ggplot2::geom_point(ggplot2::aes(x = base), colour = "#68756E", size = 2.8) +
+    ggplot2::scale_colour_manual(
+      values = c("Arttı (+)" = "#63B4A5", "Azaldı (-)" = "#E06A6A", "Değişmedi" = "#B8C4BD"),
+      breaks = c("Arttı (+)", "Azaldı (-)", "Değişmedi"),
+      drop = FALSE
+    ) +
+    ggplot2::facet_wrap(~ metric, scales = "free_x") +
+    ggplot2::labs(
+      title = "Biten Maçlardan Öğrenilen Takım Gücü Evrimi",
+      subtitle = "Gri nokta: Başlangıç öncülü · Ok ve renkli nokta: Biten maçlar (xG / goller) sonrası güncellenen model puanı",
+      x = "Güç Puanı (35 – 95)", y = NULL
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(panel.grid.major.y = ggplot2::element_blank(), legend.position = "top")
+}
+
