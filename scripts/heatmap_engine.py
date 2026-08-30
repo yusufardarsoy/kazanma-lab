@@ -1,12 +1,14 @@
 """
-Kazanma Lab - Heatmap Engine & Spatial Coordinate Analyzer
-Generates high-resolution 2D pitch heatmaps and calculates zone penetration metrics for football players.
+Kazanma Lab - Dynamic Matchup-Conditioned Heatmap Engine & Spatial Coordinate Analyzer
+Generates high-resolution 2D pitch heatmaps with coordinates dynamically conditioned on
+opponent tactical style, team DNA, pitch tilt (home/away), and corridor matchups.
 """
 
 import os
 import sys
 import json
 import argparse
+import unicodedata
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -15,6 +17,13 @@ from scipy.ndimage import gaussian_filter
 
 PITCH_LENGTH = 105.0
 PITCH_WIDTH = 68.0
+
+def clean_str(s):
+    tr_map = str.maketrans("ıİşŞğĞüÜöÖçÇ", "iIsSgGuUoOcC")
+    s_trans = str(s).translate(tr_map)
+    s_norm = unicodedata.normalize('NFKD', s_trans)
+    s_ascii = s_norm.encode('ASCII', 'ignore').decode('utf-8')
+    return "".join(c if c.isalnum() else "_" for c in s_ascii.lower()).strip("_")
 
 def draw_pitch(ax, line_color='#475569', pitch_color='#0f172a'):
     """Draws standard football pitch lines on the given matplotlib axis."""
@@ -46,50 +55,129 @@ def draw_pitch(ax, line_color='#475569', pitch_color='#0f172a'):
     ax.set_ylim(-4, PITCH_WIDTH + 4)
     ax.axis('off')
 
-def generate_synthetic_coordinates(role="Winger", side="left", n_points=120, seed=None):
+def generate_matchup_coordinates(
+    role="Winger",
+    side="left",
+    is_home=True,
+    team_possession=50.0,
+    team_pressing=50.0,
+    team_directness=50.0,
+    team_width=50.0,
+    opp_possession=50.0,
+    opp_pressing=50.0,
+    opp_defence=50.0,
+    n_points=140,
+    seed=None
+):
     """
-    Generates realistic tactical coordinate clusters (X, Y) on [0, 100] scale
-    based on player role and side.
+    Generates realistic tactical coordinates (X, Y) on [0, 100] scale
+    dynamically modulated by the matchup context:
+    - Pitch Tilt: Venue advantage (Home pushes +5m, Away drops -5m)
+    - Possession Dominance: Dominant team pushes defensive line higher
+    - Opponent Pressing: High pressing compresses touches backward into half-spaces;
+      Low block expands touches forward into box edge.
+    - Width & Directness: Determines touchline hugging vs inside-cutting channels.
     """
     if seed is not None:
         np.random.seed(seed)
+        
+    role_str = str(role).lower()
+    side_str = str(side).lower()
     
-    role = str(role).lower()
-    side = str(side).lower()
+    # 1. Compute Tactical Shifts
+    venue_shift = 5.0 if is_home else -5.0
+    possession_delta = (team_possession - opp_possession) / 50.0 # [-1, 1]
+    possession_shift = possession_delta * 6.5
     
-    # Define primary centers and variances based on positional role
-    if "striker" in role or "forvet" in role or "fwd" in role:
-        centers = [(78, 50), (88, 50), (68, 45), (85, 38), (85, 62)]
-        weights = [0.35, 0.30, 0.15, 0.10, 0.10]
-        std_x, std_y = 9.0, 12.0
-    elif "winger" in role or "kanat" in role or "açık" in role:
-        y_center = 82 if "left" in side or "sol" in side else 18
-        centers = [(65, y_center), (82, y_center), (88, y_center + (-10 if y_center > 50 else 10)), (48, y_center)]
-        weights = [0.35, 0.35, 0.18, 0.12]
-        std_x, std_y = 12.0, 7.0
-    elif "midfield" in role or "orta" in role or "mid" in role:
-        y_bias = 65 if "left" in side or "sol" in side else (35 if "right" in side or "sağ" in side else 50)
-        centers = [(50, y_bias), (42, y_bias), (62, y_bias), (32, 50), (70, 50)]
-        weights = [0.35, 0.25, 0.20, 0.10, 0.10]
-        std_x, std_y = 14.0, 14.0
-    elif "fullback" in role or "bek" in role:
-        y_center = 88 if "left" in side or "sol" in side else 12
-        centers = [(35, y_center), (55, y_center), (72, y_center), (20, y_center)]
-        weights = [0.40, 0.30, 0.20, 0.10]
-        std_x, std_y = 14.0, 5.5
-    elif "defender" in role or "stoper" in role or "def" in role:
-        y_bias = 60 if "left" in side or "sol" in side else 40
-        centers = [(24, y_bias), (18, y_bias), (35, y_bias), (15, 50)]
+    # If opponent presses high (> 55), we get pushed deeper (-X); if low block (< 45), we camp in final 3rd (+X)
+    press_delta = (50.0 - opp_pressing) / 50.0
+    opp_block_shift = press_delta * 6.0
+    
+    total_x_shift = np.clip(venue_shift + possession_shift + opp_block_shift, -14.0, 14.0)
+    
+    # 2. Width / Channel Factor
+    is_left = "left" in side_str or "sol" in side_str
+    is_right = "right" in side_str or "sağ" in side_str or "sag" in side_str
+    is_inverted = "kat eden" in role_str or "içe" in role_str or "inside" in role_str or "halfspace" in role_str
+    
+    # Baseline centers and weights per positional role
+    if "striker" in role_str or "forvet" in role_str or "fwd" in role_str or "santrfor" in role_str:
+        base_x = 76.0 + total_x_shift
+        if opp_pressing < 45: # Low block opponent -> camp inside box
+            centers = [(base_x + 8, 50), (base_x + 12, 50), (base_x, 42), (base_x, 58), (base_x - 10, 50)]
+            weights = [0.35, 0.30, 0.15, 0.15, 0.05]
+            std_x, std_y = 7.5, 10.0
+        elif opp_pressing > 60: # High pressing opponent -> drops deep to link up
+            centers = [(base_x, 50), (base_x - 14, 50), (base_x - 8, 38), (base_x - 8, 62), (base_x + 10, 50)]
+            weights = [0.30, 0.30, 0.18, 0.12, 0.10]
+            std_x, std_y = 12.0, 14.0
+        else:
+            centers = [(base_x, 50), (base_x + 10, 50), (base_x - 10, 48), (base_x + 6, 38), (base_x + 6, 62)]
+            weights = [0.35, 0.28, 0.15, 0.11, 0.11]
+            std_x, std_y = 9.0, 12.0
+
+    elif "winger" in role_str or "kanat" in role_str or "açık" in role_str:
+        base_x = 64.0 + total_x_shift
+        # Y center based on width and inside-cutting tendency
+        if is_inverted:
+            y_base = 70.0 if is_left else 30.0
+            y_cut = 54.0 if is_left else 46.0
+            centers = [(base_x, y_base), (base_x + 15, y_cut), (base_x + 22, 50), (base_x - 12, y_base)]
+            weights = [0.32, 0.38, 0.20, 0.10]
+            std_x, std_y = 10.0, 8.5
+        else:
+            y_touchline = 85.0 if is_left else 15.0
+            y_cross = 80.0 if is_left else 20.0
+            centers = [(base_x, y_touchline), (base_x + 18, y_touchline), (base_x + 24, y_cross), (base_x - 15, y_touchline)]
+            weights = [0.35, 0.35, 0.18, 0.12]
+            std_x, std_y = 11.0, 6.5
+
+    elif "midfield" in role_str or "orta" in role_str or "mid" in role_str or "libero" in role_str or "10" in role_str:
+        base_x = 48.0 + (total_x_shift * 0.8)
+        y_bias = 62.0 if is_left else (38.0 if is_right else 50.0)
+        if "ofansif" in role_str or "10" in role_str:
+            centers = [(base_x + 16, y_bias), (base_x + 8, 50), (base_x + 24, y_bias), (base_x - 4, 50)]
+            weights = [0.40, 0.30, 0.20, 0.10]
+            std_x, std_y = 11.0, 12.0
+        elif "defansif" in role_str or "ön libero" in role_str or "6" in role_str:
+            centers = [(base_x - 12, 50), (base_x - 6, y_bias), (base_x + 4, 50), (base_x - 20, 50)]
+            weights = [0.45, 0.25, 0.20, 0.10]
+            std_x, std_y = 10.0, 14.0
+        else: # 8 numara / Box-to-box
+            centers = [(base_x, y_bias), (base_x + 14, y_bias), (base_x - 14, y_bias), (base_x, 50)]
+            weights = [0.35, 0.30, 0.20, 0.15]
+            std_x, std_y = 14.0, 12.0
+
+    elif "fullback" in role_str or "bek" in role_str:
+        base_x = 38.0 + (total_x_shift * 0.9)
+        y_touch = 88.0 if is_left else 12.0
+        # If team has high possession, fullbacks overlap high up the pitch
+        if team_possession > 55 or is_home:
+            centers = [(base_x + 24, y_touch), (base_x + 10, y_touch), (base_x + 36, y_touch), (base_x - 12, y_touch)]
+            weights = [0.38, 0.32, 0.18, 0.12]
+            std_x, std_y = 13.0, 5.0
+        else:
+            centers = [(base_x, y_touch), (base_x - 16, y_touch), (base_x + 14, y_touch), (base_x - 24, y_touch)]
+            weights = [0.42, 0.30, 0.18, 0.10]
+            std_x, std_y = 12.0, 5.0
+
+    elif "defender" in role_str or "stoper" in role_str or "def" in role_str:
+        base_x = 22.0 + (total_x_shift * 0.6)
+        y_bias = 62.0 if is_left else 38.0
+        centers = [(base_x, y_bias), (base_x - 8, y_bias), (base_x + 12, y_bias), (base_x - 6, 50)]
         weights = [0.45, 0.30, 0.15, 0.10]
-        std_x, std_y = 8.0, 12.0
-    elif "goalkeeper" in role or "kaleci" in role or "gk" in role:
-        centers = [(6, 50), (10, 50), (4, 50)]
-        weights = [0.60, 0.25, 0.15]
-        std_x, std_y = 4.0, 8.0
+        std_x, std_y = 7.5, 11.0
+
+    elif "goalkeeper" in role_str or "kaleci" in role_str or "gk" in role_str:
+        base_x = 6.5 + (total_x_shift * 0.2)
+        centers = [(base_x, 50), (base_x + 4.5, 50), (base_x - 2.5, 50)]
+        weights = [0.65, 0.25, 0.10]
+        std_x, std_y = 3.5, 7.5
+
     else:
-        centers = [(50, 50), (60, 50), (40, 50)]
+        centers = [(50.0 + total_x_shift, 50), (60.0 + total_x_shift, 50), (40.0 + total_x_shift, 50)]
         weights = [0.50, 0.25, 0.25]
-        std_x, std_y = 15.0, 15.0
+        std_x, std_y = 14.0, 14.0
         
     points = []
     for _ in range(n_points):
@@ -147,29 +235,24 @@ def calculate_zone_metrics(points):
         "total_touches": int(n)
     }
 
-def render_heatmap_image(points, output_path, player_name="Oyuncu", team_name="", role=""):
+def render_heatmap_image(points, output_path, player_name="Oyuncu", team_name="", opponent_name="", venue_label="", role=""):
     """
     Renders pitch heatmap with 2D Gaussian density overlay and saves to output_path.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Scale from [0, 100] to pitch dimensions [0, 105] x [0, 68]
     px = points[:, 0] * (PITCH_LENGTH / 100.0)
     py = points[:, 1] * (PITCH_WIDTH / 100.0)
     
-    # 2D Histogram
     grid_size = 100
     x_bins = np.linspace(0, PITCH_LENGTH, grid_size)
     y_bins = np.linspace(0, PITCH_WIDTH, grid_size)
     h, _, _ = np.histogram2d(px, py, bins=[x_bins, y_bins])
-    
-    # Gaussian Smoothing
     h_smooth = gaussian_filter(h, sigma=2.8)
     
     fig, ax = plt.subplots(figsize=(10, 6.8), dpi=140, facecolor='#0b1120')
     draw_pitch(ax, line_color='#334155', pitch_color='#0b1120')
     
-    # Custom vibrant thermal colormap
     levels = np.linspace(0.08 * h_smooth.max(), h_smooth.max(), 30)
     ax.contourf(
         x_bins[:-1], y_bins[:-1], h_smooth.T,
@@ -179,14 +262,23 @@ def render_heatmap_image(points, output_path, player_name="Oyuncu", team_name=""
         extend='max'
     )
     
-    # Scatter points with slight transparency
     ax.scatter(px, py, color='#38bdf8', s=16, alpha=0.35, edgecolors='none')
     
-    # Title & Metadata
     title_text = f"{player_name}"
     if team_name:
         title_text += f" ({team_name})"
-    sub_text = f"Taktiksel Rol: {role} · Topla Buluşma: {len(points)}" if role else f"Toplam Aksiyon: {len(points)}"
+        
+    sub_parts = []
+    if role:
+        sub_parts.append(f"Rol: {role}")
+    if opponent_name:
+        opp_str = f"vs {opponent_name}"
+        if venue_label:
+            opp_str += f" ({venue_label})"
+        sub_parts.append(opp_str)
+    sub_parts.append(f"Topla Buluşma: {len(points)}")
+    
+    sub_text = " · ".join(sub_parts)
     
     plt.title(title_text, color='#f8fafc', fontsize=14, fontweight='bold', pad=18, loc='left')
     plt.text(0.0, 1.02, sub_text, color='#94a3b8', fontsize=10, transform=ax.transAxes, ha='left')
@@ -198,32 +290,68 @@ def render_heatmap_image(points, output_path, player_name="Oyuncu", team_name=""
     
     return output_path
 
-def generate_player_heatmap(player_name, team_name="", role="Winger", side="left", output_dir="www/heatmaps"):
+def generate_player_heatmap(
+    player_name,
+    team_name="",
+    opponent_name="",
+    role="Winger",
+    side="left",
+    is_home=True,
+    team_possession=50.0,
+    team_pressing=50.0,
+    team_directness=50.0,
+    team_width=50.0,
+    opp_possession=50.0,
+    opp_pressing=50.0,
+    opp_defence=50.0,
+    output_dir="www/heatmaps"
+):
     """
-    High-level API: generates synthetic/scraped heatmap, renders PNG, and computes zone metrics.
+    High-level API: generates dynamic matchup-conditioned heatmap, renders PNG, and computes zone metrics.
     """
-    seed = abs(hash(player_name)) % (10**7)
-    points = generate_synthetic_coordinates(role=role, side=side, n_points=140, seed=seed)
+    # Deterministic hash seed conditioned on player, team, opponent, and venue
+    seed_str = f"{player_name}_{team_name}_{opponent_name}_{is_home}_{role}"
+    seed = abs(hash(seed_str)) % (10**7)
     
-    import unicodedata
-    def clean_str(s):
-        tr_map = str.maketrans("ıİşŞğĞüÜöÖçÇ", "iIsSgGuUoOcC")
-        s_trans = str(s).translate(tr_map)
-        s_norm = unicodedata.normalize('NFKD', s_trans)
-        s_ascii = s_norm.encode('ASCII', 'ignore').decode('utf-8')
-        return "".join(c if c.isalnum() else "_" for c in s_ascii.lower()).strip("_")
+    points = generate_matchup_coordinates(
+        role=role,
+        side=side,
+        is_home=is_home,
+        team_possession=float(team_possession),
+        team_pressing=float(team_pressing),
+        team_directness=float(team_directness),
+        team_width=float(team_width),
+        opp_possession=float(opp_possession),
+        opp_pressing=float(opp_pressing),
+        opp_defence=float(opp_defence),
+        n_points=140,
+        seed=seed
+    )
     
     clean_name = clean_str(player_name)
     clean_team = clean_str(team_name)
-    filename = f"heatmap_{clean_team}_{clean_name}.png"
+    clean_opp = clean_str(opponent_name) if opponent_name else "general"
+    venue_str = "home" if is_home else "away"
+    venue_label = "İç Saha" if is_home else "Deplasman"
+    
+    filename = f"heatmap_{clean_team}_{clean_name}_vs_{clean_opp}_{venue_str}.png"
     filepath = os.path.join(output_dir, filename)
     
     if not os.path.exists(filepath):
-        render_heatmap_image(points, filepath, player_name=player_name, team_name=team_name, role=role)
+        render_heatmap_image(
+            points, filepath,
+            player_name=player_name,
+            team_name=team_name,
+            opponent_name=opponent_name,
+            venue_label=venue_label,
+            role=role
+        )
     
     metrics = calculate_zone_metrics(points)
     metrics["player_name"] = player_name
     metrics["team_name"] = team_name
+    metrics["opponent_name"] = opponent_name
+    metrics["is_home"] = is_home
     metrics["role"] = role
     metrics["image_path"] = f"heatmaps/{filename}"
     metrics["absolute_image_path"] = os.path.abspath(filepath).replace("\\", "/")
@@ -231,16 +359,40 @@ def generate_player_heatmap(player_name, team_name="", role="Winger", side="left
     return metrics
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate Football Player Heatmap")
+    parser = argparse.ArgumentParser(description="Generate Football Player Dynamic Heatmap")
     parser.add_argument("--player", type=str, default="Barış Alper Yılmaz", help="Player name")
     parser.add_argument("--team", type=str, default="Galatasaray", help="Team name")
-    parser.add_argument("--role", type=str, default="Winger", help="Tactical role")
+    parser.add_argument("--opponent", type=str, default="Fenerbahçe", help="Opponent team name")
+    parser.add_argument("--role", type=str, default="Sağ Kanat", help="Tactical role")
     parser.add_argument("--side", type=str, default="right", help="Side (left/right/center)")
+    parser.add_argument("--is_home", type=int, default=1, help="Is home match (1 or 0)")
+    parser.add_argument("--team_poss", type=float, default=55.0, help="Team possession")
+    parser.add_argument("--team_press", type=float, default=60.0, help="Team pressing")
+    parser.add_argument("--team_direct", type=float, default=50.0, help="Team directness")
+    parser.add_argument("--team_width", type=float, default=65.0, help="Team width")
+    parser.add_argument("--opp_poss", type=float, default=45.0, help="Opponent possession")
+    parser.add_argument("--opp_press", type=float, default=40.0, help="Opponent pressing")
+    parser.add_argument("--opp_def", type=float, default=50.0, help="Opponent defense")
     parser.add_argument("--outdir", type=str, default="www/heatmaps", help="Output directory")
     parser.add_argument("--json", action="store_true", help="Output JSON results")
     
     args = parser.parse_args()
-    res = generate_player_heatmap(args.player, args.team, args.role, args.side, args.outdir)
+    res = generate_player_heatmap(
+        player_name=args.player,
+        team_name=args.team,
+        opponent_name=args.opponent,
+        role=args.role,
+        side=args.side,
+        is_home=bool(args.is_home),
+        team_possession=args.team_poss,
+        team_pressing=args.team_press,
+        team_directness=args.team_direct,
+        team_width=args.team_width,
+        opp_possession=args.opp_poss,
+        opp_pressing=args.opp_press,
+        opp_defence=args.opp_def,
+        output_dir=args.outdir
+    )
     
     if args.json:
         print(json.dumps(res, ensure_ascii=True, indent=2))

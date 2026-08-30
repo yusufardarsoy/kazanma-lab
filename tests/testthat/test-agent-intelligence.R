@@ -17,6 +17,39 @@ test_that("heatmap generation script produces valid metrics and PNG file", {
   expect_true(file.exists(file.path(kazanma_project_root(), "www", res$image_path)))
 })
 
+test_that("same player against different opponents produces distinct dynamic spatial heatmaps", {
+  skip_if_not(file.exists("C:/Users/arda/anaconda3/python.exe"), "Python not found")
+  
+  res_low_block <- run_player_heatmap(
+    player_name = "FB · Sağ kanat adayı",
+    team_name = "Fenerbahçe",
+    opponent_name = "Konyaspor",
+    role = "İçe kat eden kanat",
+    side = "right",
+    is_home = TRUE,
+    team_possession = 62,
+    opp_possession = 38,
+    opp_pressing = 35
+  )
+  
+  res_high_press <- run_player_heatmap(
+    player_name = "FB · Sağ kanat adayı",
+    team_name = "Fenerbahçe",
+    opponent_name = "Samsunspor",
+    role = "İçe kat eden kanat",
+    side = "right",
+    is_home = FALSE,
+    team_possession = 52,
+    opp_possession = 48,
+    opp_pressing = 68
+  )
+  
+  expect_false(identical(res_low_block$image_path, res_high_press$image_path))
+  expect_true(res_low_block$attacking_third_pct > res_high_press$attacking_third_pct)
+  expect_true(file.exists(file.path(kazanma_project_root(), "www", res_low_block$image_path)))
+  expect_true(file.exists(file.path(kazanma_project_root(), "www", res_high_press$image_path)))
+})
+
 test_that("heatmap DB storage saves and retrieves player heatmaps", {
   db_path <- tempfile(fileext = ".sqlite")
   on.exit(unlink(db_path), add = TRUE)

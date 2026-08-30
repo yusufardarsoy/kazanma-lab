@@ -653,8 +653,39 @@ app_server <- function(input, output, session, config) {
       h_side <- if (grepl("sağ|sag|right", tolower(hp$role))) "right" else if (grepl("sol|left", tolower(hp$role))) "left" else "center"
       a_side <- if (grepl("sağ|sag|right", tolower(ap$role))) "right" else if (grepl("sol|left", tolower(ap$role))) "left" else "center"
       
-      h_map <- run_player_heatmap(hp$player, p$home$team, role = hp$role, side = h_side, config = config)
-      a_map <- run_player_heatmap(ap$player, p$away$team, role = ap$role, side = a_side, config = config)
+      h_map <- run_player_heatmap(
+        player_name = hp$player,
+        team_name = p$home$team,
+        opponent_name = p$away$team,
+        role = hp$role,
+        side = h_side,
+        is_home = TRUE,
+        team_possession = p$home$possession %||% 50,
+        team_pressing = p$home$pressing %||% 50,
+        team_directness = p$home$directness %||% 50,
+        team_width = p$home$width %||% 50,
+        opp_possession = p$away$possession %||% 50,
+        opp_pressing = p$away$pressing %||% 50,
+        opp_defence = p$away$defence %||% 50,
+        config = config
+      )
+      
+      a_map <- run_player_heatmap(
+        player_name = ap$player,
+        team_name = p$away$team,
+        opponent_name = p$home$team,
+        role = ap$role,
+        side = a_side,
+        is_home = FALSE,
+        team_possession = p$away$possession %||% 50,
+        team_pressing = p$away$pressing %||% 50,
+        team_directness = p$away$directness %||% 50,
+        team_width = p$away$width %||% 50,
+        opp_possession = p$home$possession %||% 50,
+        opp_pressing = p$home$pressing %||% 50,
+        opp_defence = p$home$defence %||% 50,
+        config = config
+      )
       
       h_att <- h_map$attacking_third_pct %||% 0
       a_att <- a_map$attacking_third_pct %||% 0
@@ -713,8 +744,38 @@ app_server <- function(input, output, session, config) {
     h_side <- if (grepl("sağ|sag|right", tolower(h_lead$role))) "right" else if (grepl("sol|left", tolower(h_lead$role))) "left" else "center"
     a_side <- if (grepl("sağ|sag|right", tolower(a_lead$role))) "right" else if (grepl("sol|left", tolower(a_lead$role))) "left" else "center"
 
-    h_metrics <- run_player_heatmap(h_lead$player, p$home$team, role = h_lead$role, side = h_side, config = config)
-    a_metrics <- run_player_heatmap(a_lead$player, p$away$team, role = a_lead$role, side = a_side, config = config)
+    h_metrics <- run_player_heatmap(
+      player_name = h_lead$player,
+      team_name = p$home$team,
+      opponent_name = p$away$team,
+      role = h_lead$role,
+      side = h_side,
+      is_home = TRUE,
+      team_possession = p$home$possession %||% 50,
+      team_pressing = p$home$pressing %||% 50,
+      team_directness = p$home$directness %||% 50,
+      team_width = p$home$width %||% 50,
+      opp_possession = p$away$possession %||% 50,
+      opp_pressing = p$away$pressing %||% 50,
+      opp_defence = p$away$defence %||% 50,
+      config = config
+    )
+    a_metrics <- run_player_heatmap(
+      player_name = a_lead$player,
+      team_name = p$away$team,
+      opponent_name = p$home$team,
+      role = a_lead$role,
+      side = a_side,
+      is_home = FALSE,
+      team_possession = p$away$possession %||% 50,
+      team_pressing = p$away$pressing %||% 50,
+      team_directness = p$away$directness %||% 50,
+      team_width = p$away$width %||% 50,
+      opp_possession = p$home$possession %||% 50,
+      opp_pressing = p$home$pressing %||% 50,
+      opp_defence = p$home$defence %||% 50,
+      config = config
+    )
     match_name <- paste(p$home$team, "vs", p$away$team)
 
     rep <- run_nvidia_ai_scout(

@@ -24,7 +24,22 @@ kazanma_project_root <- function() {
   curr
 }
 
-run_player_heatmap <- function(player_name, team_name = "", role = "Winger", side = "left", config = NULL) {
+run_player_heatmap <- function(
+  player_name,
+  team_name = "",
+  opponent_name = "",
+  role = "Winger",
+  side = "left",
+  is_home = TRUE,
+  team_possession = 50.0,
+  team_pressing = 50.0,
+  team_directness = 50.0,
+  team_width = 50.0,
+  opp_possession = 50.0,
+  opp_pressing = 50.0,
+  opp_defence = 50.0,
+  config = NULL
+) {
   py_bin <- python_executable_path(config)
   root <- kazanma_project_root()
   out_dir <- file.path(root, "www", "heatmaps")
@@ -35,8 +50,17 @@ run_player_heatmap <- function(player_name, team_name = "", role = "Winger", sid
     shQuote(script_path),
     "--player", shQuote(as.character(player_name)),
     "--team", shQuote(as.character(team_name)),
+    "--opponent", shQuote(as.character(opponent_name)),
     "--role", shQuote(as.character(role)),
     "--side", shQuote(as.character(side)),
+    "--is_home", if (isTRUE(is_home)) "1" else "0",
+    "--team_poss", as.character(as.numeric(team_possession %||% 50)),
+    "--team_press", as.character(as.numeric(team_pressing %||% 50)),
+    "--team_direct", as.character(as.numeric(team_directness %||% 50)),
+    "--team_width", as.character(as.numeric(team_width %||% 50)),
+    "--opp_poss", as.character(as.numeric(opp_possession %||% 50)),
+    "--opp_press", as.character(as.numeric(opp_pressing %||% 50)),
+    "--opp_def", as.character(as.numeric(opp_defence %||% 50)),
     "--outdir", shQuote(out_dir),
     "--json"
   )
