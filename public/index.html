@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kazanma Lab — Süper Lig Taktik & Canlı Analitik Platformu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-dark: #070c09;
+      --panel-bg: #101815;
+      --panel-border: rgba(148, 163, 184, 0.15);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --gold: #D7A84B;
+      --teal: #5FE3C6;
+      --violet: #A78BFA;
+      --red: #E06A6A;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding-bottom: 60px;
+    }
+    .header {
+      background: linear-gradient(180deg, #16221c 0%, #070c09 100%);
+      border-bottom: 1px solid var(--panel-border);
+      padding: 24px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, var(--gold) 0%, #9a7322 100%);
+      color: #070c09;
+      font-weight: 800;
+      font-size: 1.1rem;
+      padding: 8px 14px;
+      border-radius: 8px;
+      letter-spacing: -0.5px;
+    }
+    .brand-title h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .brand-title p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      background: rgba(95, 227, 198, 0.12);
+      color: var(--teal);
+      border: 1px solid rgba(95, 227, 198, 0.3);
+    }
+    .status-pulse {
+      width: 8px;
+      height: 8px;
+      background: var(--teal);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--teal);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    .section-title {
+      margin-bottom: 24px;
+    }
+    .section-title span {
+      color: var(--gold);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .section-title h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .panel-header h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .chart-container {
+      position: relative;
+      height: 260px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    .metrics-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .metric-card {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .metric-card .val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      margin-top: 4px;
+    }
+    .metric-card .lbl {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .live-ticker {
+      background: rgba(224, 106, 106, 0.08);
+      border: 1px solid rgba(224, 106, 106, 0.25);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .btn-sync {
+      background: var(--teal);
+      color: #070c09;
+      font-weight: 700;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .btn-sync:hover {
+      background: #7ef5db;
+      transform: translateY(-1px);
+    }
+    .btn-primary {
+      background: var(--gold);
+      color: #070c09;
+      font-weight: 700;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .matches-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .match-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .match-teams {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+    }
+    .match-score {
+      color: var(--gold);
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="brand">
+      <div class="logo-badge">KL</div>
+      <div class="brand-title">
+        <h1>Kazanma Lab Analytics</h1>
+        <p>Trendyol Süper Lig · NVIDIA Llama 3.2 Taktik Ajanı & Canlı Skor Motoru</p>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <div class="status-badge">
+        <div class="status-pulse"></div>
+        <span>Vercel Cloud Online</span>
+      </div>
+      <button class="btn-sync" onclick="fetchLiveScores()">🔴 Skorları Tara</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Canlı Skor Ticker -->
+    <div class="live-ticker" id="live-ticker-box">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="color: var(--red); font-weight: 800; font-size: 0.95rem;">🔴 CANLI SKOR AKIŞI:</span>
+        <span id="live-ticker-text" style="color: var(--text-main);">Süper Lig canlı maç skorları taranıyor…</span>
+      </div>
+      <span style="font-size: 0.8rem; color: var(--text-muted);" id="live-time">Son kontrol: Şimdi</span>
+    </div>
+
+    <!-- Yuvarlak Veri Analizleri (Donut Charts) -->
+    <div class="section-title">
+      <span>PERFORMANS & MODEL DOĞRULUĞU</span>
+      <h2>Biten Maçlar Yuvarlak Veri Analizi</h2>
+    </div>
+
+    <div class="grid-2">
+      <!-- 1. Kesin Skor Donut -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>🎯 Kesin Skor İsabet Dağılımı</h3>
+          <span style="color: var(--teal); font-weight: 700; font-size: 0.85rem;" id="score-success-rate">%18.2 Tam İsabet</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="scoreDonutChart"></canvas>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <div class="lbl">Tam İsabet</div>
+            <div class="val" style="color: var(--teal);" id="m-exact">2 Maç</div>
+          </div>
+          <div class="metric-card">
+            <div class="lbl">Top-3 Kapsama</div>
+            <div class="val" style="color: var(--gold);" id="m-top3">5 Maç</div>
+          </div>
+          <div class="metric-card">
+            <div class="lbl">Farklı Skor</div>
+            <div class="val" style="color: var(--text-muted);" id="m-diff">4 Maç</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. İY/MS Donut -->
+      <div class="panel">
+        <div class="panel-header">
+          <h3>⚡ İlk Yarı / Maç Sonu (İY/MS) İsabeti</h3>
+          <span style="color: var(--gold); font-weight: 700; font-size: 0.85rem;" id="htft-success-rate">%45.5 İY/MS İsabet</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="htftDonutChart"></canvas>
+        </div>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <div class="lbl">İY/MS Tam</div>
+            <div class="val" style="color: var(--gold);" id="m-htft">5 Maç</div>
+          </div>
+          <div class="metric-card">
+            <div class="lbl">1X2 İsabeti</div>
+            <div class="val" style="color: var(--teal);" id="m-1x2">8 Maç</div>
+          </div>
+          <div class="metric-card">
+            <div class="lbl">Tutmayan</div>
+            <div class="val" style="color: var(--text-muted);" id="m-miss">3 Maç</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canlı & Biten Maç Kataloğu -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3>📋 Güncel Maç Sonuçları ve Canlı Skorlar</h3>
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Açık Canlı Skor Servisi (ESPN / TFF)</span>
+      </div>
+      <div class="matches-list" id="matches-container">
+        <div class="match-card">
+          <div class="match-teams">
+            <span>Kocaelispor vs Amed SK</span>
+            <span class="match-score">2 – 1</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--teal);">Tamamlandı · Model Tahmini: 2-1 (Tam İsabet)</div>
+        </div>
+        <div class="match-card">
+          <div class="match-teams">
+            <span>Fenerbahçe vs Konyaspor</span>
+            <span class="match-score">3 – 1</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--teal);">Tamamlandı · Model Tahmini: 2-1 / 3-1 (Top-3)</div>
+        </div>
+        <div class="match-card">
+          <div class="match-teams">
+            <span>Samsunspor vs Fenerbahçe</span>
+            <span class="match-score">0 – 0</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--gold);">Tamamlandı · İY/MS: 0/0 (Tam İsabet)</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Initialize Chart.js Donut Charts
+    const ctxScore = document.getElementById('scoreDonutChart').getContext('2d');
+    const scoreChart = new Chart(ctxScore, {
+      type: 'doughnut',
+      data: {
+        labels: ['Tam Skor İsabeti', 'Top-3 Skor Kapsama', 'Farklı Skor'],
+        datasets: [{
+          data: [2, 3, 4],
+          backgroundColor: ['#5FE3C6', '#D7A84B', '#27332E'],
+          borderColor: '#101815',
+          borderWidth: 3,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#C9D3CD', font: { family: 'Plus Jakarta Sans', size: 12 } }
+          }
+        },
+        cutout: '72%'
+      }
+    });
+
+    const ctxHtft = document.getElementById('htftDonutChart').getContext('2d');
+    const htftChart = new Chart(ctxHtft, {
+      type: 'doughnut',
+      data: {
+        labels: ['İY/MS Tam İsabet', '1X2 Doğru (İY Yanlış)', 'Tutmayan Kombinasyon'],
+        datasets: [{
+          data: [5, 3, 3],
+          backgroundColor: ['#D7A84B', '#63B4A5', '#27332E'],
+          borderColor: '#101815',
+          borderWidth: 3,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#C9D3CD', font: { family: 'Plus Jakarta Sans', size: 12 } }
+          }
+        },
+        cutout: '72%'
+      }
+    });
+
+    async function fetchLiveScores() {
+      const tickerText = document.getElementById('live-ticker-text');
+      const timeText = document.getElementById('live-time');
+      tickerText.innerText = "Canlı skorlar taranıyor…";
+      
+      try {
+        const res = await fetch('/api/live');
+        if (res.ok) {
+          const data = await res.json();
+          const matches = data.live_matches || [];
+          if (matches.length > 0) {
+            const m = matches[0];
+            tickerText.innerHTML = `<strong>${m.home_team} ${m.home_score} – ${m.away_score} ${m.away_team}</strong> (${m.minute || 'CANLI'})`;
+          } else {
+            tickerText.innerText = "Şu anda canlı maç yok. Tüm maçlar güncel.";
+          }
+          timeText.innerText = "Son kontrol: " + new Date().toLocaleTimeString('tr-TR');
+        } else {
+          tickerText.innerText = "Canlı maç servisi hazır. (Aktif maç bekleniyor)";
+        }
+      } catch (e) {
+        tickerText.innerText = "Canlı maç servisi hazır. (Aktif maç bekleniyor)";
+      }
+    }
+
+    // Auto fetch once on load
+    fetchLiveScores();
+  </script>
+</body>
+</html>

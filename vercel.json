@@ -1,28 +1,10 @@
 {
-  "version": 2,
-  "name": "kazanma-lab",
-  "builds": [
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "www/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.py"
-    },
-    {
-      "src": "/heatmaps/(.*)",
-      "dest": "www/heatmaps/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
