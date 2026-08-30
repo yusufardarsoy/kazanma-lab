@@ -604,6 +604,93 @@ app_server <- function(input, output, session, config) {
     matches
   }, striped = FALSE, bordered = FALSE, hover = TRUE, width = "100%", align = "l")
 
+  # --- Live Scoreboard & In-Match Score Tracking ---
+  live_scores_reactive <- reactive({
+    data_version()
+    get_live_scores_db(config$db_path)
+  })
+
+  output$live_matches_banner <- renderUI({
+    live_df <- live_scores_reactive()
+    if (nrow(live_df) == 0) {
+      return(div(
+        class = "source-note",
+        style = "margin-bottom: 16px; background: rgba(39, 51, 46, 0.4); border-left: 3px solid #63B4A5;",
+        strong("ℹ️ Canlı Maç Durumu: "),
+        span("Şu anda canlı oynanmakta olan maç yok veya maçlar henüz başlamadı. '🔴 Canlı Skorları Tara & Eşitle' butonuna basarak maç anındaki anlık skorları çekebilirsiniz.")
+      ))
+    }
+    
+    cards <- lapply(seq_len(nrow(live_df)), function(i) {
+      r <- live_df[i, ]
+      div(
+        class = "panel",
+        style = "margin-bottom: 12px; background: rgba(16, 24, 21, 0.85); border: 1px solid rgba(224, 106, 106, 0.4);",
+        div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          div(
+            span(class = "status-badge live", style = "background: #E06A6A; color: white;", paste0("🔴 ", r$minute %||% "CANLI")),
+            strong(style = "font-size: 1.15rem; margin-left: 10px; color: #F5F8F6;", paste0(r$home_team, " ", r$home_goals, " – ", r$away_goals, " ", r$away_team))
+          ),
+          span(style = "color: #94A3B8; font-size: 0.85rem;", paste0("Son Güncelleme: ", format(Sys.time(), "%H:%M:%S")))
+        )
+      )
+    })
+    tagList(cards)
+  })
+
+  observeEvent(input$sync_live_scores_btn, {
+    showNotification("Canlı maç skorları ESPN & Açık servislerden taranıyor…", type = "message", duration = 3)
+    res <- sync_public_scoreboard_scores(config)
+    data_version(data_version() + 1L)
+    showNotification(res$message, type = "default", duration = 4)
+  })
+
+  # --- Donut Charts & Prediction Accuracy Analytics ---
+  exact_score_stats_reactive <- reactive({
+    data_version()
+    prediction_value()
+    score_prediction_accuracy_stats(config$db_path)
+  })
+
+  output$exact_score_donut_plot <- renderPlot({
+    stats <- exact_score_stats_reactive()
+    plot_exact_score_donut(stats)
+  }, bg = "transparent", res = 110)
+
+  output$exact_score_stats_pills <- renderUI({
+    stats <- exact_score_stats_reactive()
+    div(
+      class = "metric-strip",
+      style = "margin-top: 14px;",
+      metric_card("Tam İsabet", paste0("%", round(stats$exact_rate * 100, 1)), paste0(stats$exact_hits, " / ", stats$total, " maç"), "teal"),
+      metric_card("Top-3 İsabet", paste0("%", round(stats$top3_rate * 100, 1)), paste0(stats$exact_hits + stats$top3_hits, " / ", stats$total, " maç"), "gold"),
+      metric_card("Farklı Skor", paste0(stats$misses, " maç"), "Model dışı skor", "neutral")
+    )
+  })
+
+  htft_stats_reactive <- reactive({
+    data_version()
+    prediction_value()
+    htft_prediction_accuracy_stats(config$db_path)
+  })
+
+  output$htft_donut_plot <- renderPlot({
+    stats <- htft_stats_reactive()
+    plot_htft_donut(stats)
+  }, bg = "transparent", res = 110)
+
+  output$htft_stats_pills <- renderUI({
+    stats <- htft_stats_reactive()
+    div(
+      class = "metric-strip",
+      style = "margin-top: 14px;",
+      metric_card("İY/MS Tam İsabet", paste0("%", round(stats$htft_rate * 100, 1)), paste0(stats$htft_hits, " / ", stats$total, " maç"), "gold"),
+      metric_card("1X2 İsabeti", paste0("%", round(stats$ft_rate * 100, 1)), paste0(stats$htft_hits + stats$ft_only_hits, " / ", stats$total, " maç"), "teal"),
+      metric_card("Tutmayan", paste0(stats$misses, " maç"), "Farklı kombinasyon", "neutral")
+    )
+  })
+
   # --- AI Tactical Intelligence & 11 vs 11 Heatmap Engine ---
   ai_scout_result <- reactiveVal(NULL)
   ai_scout_loading <- reactiveVal(FALSE)

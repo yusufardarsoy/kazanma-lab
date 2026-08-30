@@ -216,3 +216,109 @@ plot_team_learning_evolution <- function(learning_summary) {
     ggplot2::theme(panel.grid.major.y = ggplot2::element_blank(), legend.position = "top")
 }
 
+plot_exact_score_donut <- function(stats) {
+  if (is.null(stats) || is.null(stats$total) || stats$total == 0) {
+    df_empty <- tibble::tibble(category = "Veri Bekleniyor", count = 1, fraction = 1, ymax = 1, ymin = 0)
+    return(
+      ggplot2::ggplot(df_empty, ggplot2::aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 2.4, fill = category)) +
+        ggplot2::geom_rect(fill = "#27332E") +
+        ggplot2::coord_polar(theta = "y") +
+        ggplot2::xlim(c(1, 4)) +
+        ggplot2::annotate("text", x = 1, y = 0.5, label = "Henüz biten\nmaç yok", colour = "#94A3B8", size = 4.5, fontface = "bold") +
+        ggplot2::theme_void() +
+        ggplot2::theme(plot.background = ggplot2::element_rect(fill = "#101815", colour = NA))
+    )
+  }
+
+  exact_n <- stats$exact_hits %||% 0
+  top3_n <- stats$top3_hits %||% 0
+  miss_n <- max(0, (stats$total %||% 0) - exact_n - top3_n)
+  total <- exact_n + top3_n + miss_n
+  if (total == 0) total <- 1
+
+  df <- tibble::tibble(
+    category = factor(c("Tam Skor İsabeti", "Top-3 Skor Kapsama", "Farklı Skor (Tutmayan)"), levels = c("Tam Skor İsabeti", "Top-3 Skor Kapsama", "Farklı Skor (Tutmayan)")),
+    count = c(exact_n, top3_n, miss_n),
+    fraction = c(exact_n, top3_n, miss_n) / total,
+    color = c("#5FE3C6", "#D7A84B", "#27332E")
+  )
+  df$ymax <- cumsum(df$fraction)
+  df$ymin <- c(0, head(df$ymax, n = -1))
+
+  pct_exact <- scales::percent(exact_n / total, accuracy = 0.1)
+  pct_top3_total <- scales::percent((exact_n + top3_n) / total, accuracy = 0.1)
+
+  ggplot2::ggplot(df, ggplot2::aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 2.5, fill = category)) +
+    ggplot2::geom_rect(colour = "#101815", linewidth = 1.2) +
+    ggplot2::coord_polar(theta = "y") +
+    ggplot2::xlim(c(0.8, 4.3)) +
+    ggplot2::scale_fill_manual(values = c("Tam Skor İsabeti" = "#5FE3C6", "Top-3 Skor Kapsama" = "#D7A84B", "Farklı Skor (Tutmayan)" = "#27332E")) +
+    ggplot2::annotate("text", x = 0.8, y = 0.5, label = paste0(pct_exact, "\nTam İsabet\n(Top-3: ", pct_top3_total, ")"), colour = "#F5F8F6", size = 4.2, fontface = "bold", lineheight = 0.95) +
+    ggplot2::labs(
+      title = "Kesin Skor İsabet Dağılımı",
+      subtitle = paste0("Toplam ", total, " biten maç · Tam İsabet: ", exact_n, " · Top-3 Kapsama: ", exact_n + top3_n)
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(
+      axis.text = ggplot2::element_blank(),
+      axis.title = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom",
+      legend.text = ggplot2::element_text(colour = "#C9D3CD", size = 10)
+    )
+}
+
+plot_htft_donut <- function(stats) {
+  if (is.null(stats) || is.null(stats$total) || stats$total == 0) {
+    df_empty <- tibble::tibble(category = "Veri Bekleniyor", count = 1, fraction = 1, ymax = 1, ymin = 0)
+    return(
+      ggplot2::ggplot(df_empty, ggplot2::aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 2.4, fill = category)) +
+        ggplot2::geom_rect(fill = "#27332E") +
+        ggplot2::coord_polar(theta = "y") +
+        ggplot2::xlim(c(1, 4)) +
+        ggplot2::annotate("text", x = 1, y = 0.5, label = "Henüz biten\nmaç yok", colour = "#94A3B8", size = 4.5, fontface = "bold") +
+        ggplot2::theme_void() +
+        ggplot2::theme(plot.background = ggplot2::element_rect(fill = "#101815", colour = NA))
+    )
+  }
+
+  exact_n <- stats$htft_hits %||% 0
+  ft_only_n <- stats$ft_only_hits %||% 0
+  miss_n <- max(0, (stats$total %||% 0) - exact_n - ft_only_n)
+  total <- exact_n + ft_only_n + miss_n
+  if (total == 0) total <- 1
+
+  df <- tibble::tibble(
+    category = factor(c("İY/MS Tam İsabet", "MS Doğru (İY Yanlış)", "Tutmayan Kombinasyon"), levels = c("İY/MS Tam İsabet", "MS Doğru (İY Yanlış)", "Tutmayan Kombinasyon")),
+    count = c(exact_n, ft_only_n, miss_n),
+    fraction = c(exact_n, ft_only_n, miss_n) / total,
+    color = c("#D7A84B", "#63B4A5", "#27332E")
+  )
+  df$ymax <- cumsum(df$fraction)
+  df$ymin <- c(0, head(df$ymax, n = -1))
+
+  pct_htft <- scales::percent(exact_n / total, accuracy = 0.1)
+  pct_ft <- scales::percent((exact_n + ft_only_n) / total, accuracy = 0.1)
+
+  ggplot2::ggplot(df, ggplot2::aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 2.5, fill = category)) +
+    ggplot2::geom_rect(colour = "#101815", linewidth = 1.2) +
+    ggplot2::coord_polar(theta = "y") +
+    ggplot2::xlim(c(0.8, 4.3)) +
+    ggplot2::scale_fill_manual(values = c("İY/MS Tam İsabet" = "#D7A84B", "MS Doğru (İY Yanlış)" = "#63B4A5", "Tutmayan Kombinasyon" = "#27332E")) +
+    ggplot2::annotate("text", x = 0.8, y = 0.5, label = paste0(pct_htft, "\nİY/MS İsabet\n(1X2: ", pct_ft, ")"), colour = "#F5F8F6", size = 4.2, fontface = "bold", lineheight = 0.95) +
+    ggplot2::labs(
+      title = "İlk Yarı / Maç Sonu (İY/MS) İsabet Dağılımı",
+      subtitle = paste0("Toplam ", total, " biten maç · İY/MS İsabet: ", exact_n, " · 1X2 İsabet: ", exact_n + ft_only_n)
+    ) +
+    theme_kazanma() +
+    ggplot2::theme(
+      axis.text = ggplot2::element_blank(),
+      axis.title = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "bottom",
+      legend.text = ggplot2::element_text(colour = "#C9D3CD", size = 10)
+    )
+}
+

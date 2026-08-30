@@ -350,11 +350,15 @@ sync_public_scoreboard_scores <- function(config, now = Sys.time()) {
   }
 
   results_list <- list()
+  live_list <- list()
   for (ev in raw$events) {
     comp <- ev$competitions[[1]]
     status <- ev$status$type$name
     completed <- isTRUE(ev$status$type$completed) || identical(status, "STATUS_FULL_TIME") || identical(status, "STATUS_FINAL")
-    if (!completed) next
+    in_progress <- !completed && (
+      identical(ev$status$type$state, "in") ||
+      status %in% c("STATUS_IN_PROGRESS", "STATUS_FIRST_HALF", "STATUS_SECOND_HALF", "STATUS_HALFTIME", "STATUS_EXTRA_TIME")
+    )
 
     home_comp <- purrr::keep(comp$competitors, ~ .x$homeAway == "home")[[1]]
     away_comp <- purrr::keep(comp$competitors, ~ .x$homeAway == "away")[[1]]
@@ -374,22 +378,38 @@ sync_public_scoreboard_scores <- function(config, now = Sys.time()) {
 
     match_date <- format(as.POSIXct(ev$date, format = "%Y-%m-%dT%H:%MZ", tz = "UTC"), "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
 
-    results_list[[length(results_list) + 1L]] <- tibble::tibble(
-      fixture_id = fixture_id,
-      match_date = match_date,
-      home_team = home_lookup$team,
-      away_team = away_lookup$team,
-      home_goals = home_score,
-      away_goals = away_score,
-      home_xg = NA_real_,
-      away_xg = NA_real_,
-      home_cards = NA_integer_,
-      away_cards = NA_integer_,
-      result_source = "Açık Canlı Skor Servisi",
-      source_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard",
-      source_published_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
-      fetched_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
-    )
+    if (completed) {
+      results_list[[length(results_list) + 1L]] <- tibble::tibble(
+        fixture_id = fixture_id,
+        match_date = match_date,
+        home_team = home_lookup$team,
+        away_team = away_lookup$team,
+        home_goals = home_score,
+        away_goals = away_score,
+        home_xg = NA_real_,
+        away_xg = NA_real_,
+        home_cards = NA_integer_,
+        away_cards = NA_integer_,
+        result_source = "Açık Canlı Skor Servisi",
+        source_url = "https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard",
+        source_published_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul"),
+        fetched_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
+      )
+    } else if (in_progress) {
+      display_clock <- ev$status$displayClock %||% (if (status == "STATUS_HALFTIME") "İY" else "CANLI")
+      detail_txt <- ev$status$type$detail %||% paste0("CANLI ", display_clock)
+      live_list[[length(live_list) + 1L]] <- tibble::tibble(
+        fixture_id = fixture_id,
+        home_team = home_lookup$team,
+        away_team = away_lookup$team,
+        home_goals = home_score,
+        away_goals = away_score,
+        minute = as.character(display_clock),
+        status_text = as.character(detail_txt),
+        is_live = 1L,
+        updated_at = format(now, "%Y-%m-%dT%H:%M:%S%z", tz = "Europe/Istanbul")
+      )
+    }
   }
 
   imported_count <- 0L
@@ -399,11 +419,19 @@ sync_public_scoreboard_scores <- function(config, now = Sys.time()) {
     imported_count <- import_postmatch_results(results_df, config$db_path)
   }
 
+  live_count <- 0L
+  if (length(live_list) > 0) {
+    live_df <- dplyr::bind_rows(live_list) |>
+      dplyr::distinct(fixture_id, .keep_all = TRUE)
+    live_count <- save_live_scores_db(config$db_path, live_df)
+  }
+
   invisible(list(
     source = "Açık Canlı Skor Servisi",
     status = "ok",
     results = imported_count,
+    live_matches = live_count,
     odds_rows = 0L,
-    message = paste0(imported_count, " tamamlanan maç skoru canlı açık web kaynağından güncellendi.")
+    message = paste0(imported_count, " tamamlanan maç ve ", live_count, " canlı maç skoru güncellendi.")
   ))
 }

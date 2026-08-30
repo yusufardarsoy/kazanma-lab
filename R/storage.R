@@ -169,6 +169,18 @@ initialize_store <- function(db_path) {
         duration_seconds REAL,
         created_at TEXT NOT NULL
       )")
+    DBI::dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS live_scoreboard (
+        fixture_id TEXT PRIMARY KEY,
+        home_team TEXT NOT NULL,
+        away_team TEXT NOT NULL,
+        home_goals INTEGER NOT NULL DEFAULT 0,
+        away_goals INTEGER NOT NULL DEFAULT 0,
+        minute TEXT,
+        status_text TEXT,
+        is_live INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+      )")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_lineups_fixture ON provider_lineups(provider_fixture_id)")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_provider_absences_fixture ON provider_absences(provider_fixture_id)")
     DBI::dbExecute(con, "CREATE INDEX IF NOT EXISTS idx_odds_fixture_time ON odds_snapshots(fixture_id, snapshot_at)")
@@ -1005,6 +1017,195 @@ get_latest_tactical_scout_report_db <- function(db_path, match_name = NULL) {
     if (nrow(res) == 0) return(NULL)
     as.list(res[1, ])
   })
+}
+
+save_live_scores_db <- function(db_path, live_df) {
+  if (is.null(live_df) || nrow(live_df) == 0) return(invisible(0L))
+  with_store(db_path, function(con) {
+    DBI::dbExecute(con, "DELETE FROM live_scoreboard")
+    for (i in seq_len(nrow(live_df))) {
+      row <- live_df[i, ]
+      DBI::dbExecute(con, "
+        INSERT INTO live_scoreboard (
+          fixture_id, home_team, away_team, home_goals, away_goals, minute, status_text, is_live, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(fixture_id) DO UPDATE SET
+          home_goals = excluded.home_goals,
+          away_goals = excluded.away_goals,
+          minute = excluded.minute,
+          status_text = excluded.status_text,
+          is_live = excluded.is_live,
+          updated_at = excluded.updated_at
+      ", params = list(
+        as.character(row$fixture_id),
+        as.character(row$home_team),
+        as.character(row$away_team),
+        as.integer(row$home_goals),
+        as.integer(row$away_goals),
+        as.character(row$minute %||% ""),
+        as.character(row$status_text %||% "CANLI"),
+        as.integer(row$is_live %||% 1L),
+        format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+      ))
+    }
+  })
+  invisible(nrow(live_df))
+}
+
+get_live_scores_db <- function(db_path) {
+  with_store(db_path, function(con) {
+    res <- DBI::dbGetQuery(con, "SELECT * FROM live_scoreboard")
+    if (nrow(res) == 0) return(tibble::tibble())
+    tibble::as_tibble(res)
+  })
+}
+
+score_prediction_accuracy_stats <- function(db_path) {
+  joined <- eligible_prediction_results(db_path)
+  
+  if (nrow(joined) == 0) {
+    post_results <- with_store(db_path, function(con) {
+      DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date DESC")
+    })
+    if (nrow(post_results) == 0) {
+      return(list(total = 0L, exact_hits = 0L, top3_hits = 0L, misses = 0L, exact_rate = 0, top3_rate = 0))
+    }
+    
+    teams <- if (exists("super_lig_teams", mode = "function")) super_lig_teams() else tibble::tibble()
+    eval_list <- purrr::map_dfr(seq_len(nrow(post_results)), function(i) {
+      r <- post_results[i, ]
+      ht <- teams |> dplyr::filter(team == r$home_team)
+      at <- teams |> dplyr::filter(team == r$away_team)
+      h_att <- if (nrow(ht) > 0) ht$attack[[1]] else 75
+      h_def <- if (nrow(ht) > 0) ht$defence[[1]] else 75
+      a_att <- if (nrow(at) > 0) at$attack[[1]] else 75
+      a_def <- if (nrow(at) > 0) at$defence[[1]] else 75
+      
+      ehg <- round(pmax(0.4, 1.45 * (h_att / 75) * (75 / a_def) * 1.12), 2)
+      eag <- round(pmax(0.3, 1.15 * (a_att / 75) * (75 / h_def) * 0.88), 2)
+      
+      m <- score_probability_matrix(ehg, eag, max_goals = 6L)
+      top_scores <- top_exact_scores(m, n = 3L)
+      actual_str <- paste0(r$home_goals, "–", r$away_goals)
+      
+      exact_match <- (actual_str == top_scores$score[[1]])
+      top3_match <- (actual_str %in% top_scores$score) && !exact_match
+      
+      tibble::tibble(exact = exact_match, top3 = top3_match)
+    })
+    
+    n_tot <- nrow(eval_list)
+    n_exact <- sum(eval_list$exact, na.rm = TRUE)
+    n_top3 <- sum(eval_list$top3, na.rm = TRUE)
+    n_miss <- n_tot - n_exact - n_top3
+    
+    return(list(
+      total = n_tot,
+      exact_hits = n_exact,
+      top3_hits = n_top3,
+      misses = n_miss,
+      exact_rate = round(n_exact / n_tot, 3),
+      top3_rate = round((n_exact + n_top3) / n_tot, 3)
+    ))
+  }
+  
+  n_tot <- nrow(joined)
+  n_exact <- sum(joined$exact_score_match, na.rm = TRUE)
+  n_top3 <- sum(joined$top3_score_match & !joined$exact_score_match, na.rm = TRUE)
+  n_miss <- n_tot - n_exact - n_top3
+  
+  list(
+    total = n_tot,
+    exact_hits = n_exact,
+    top3_hits = n_top3,
+    misses = n_miss,
+    exact_rate = round(n_exact / n_tot, 3),
+    top3_rate = round((n_exact + n_top3) / n_tot, 3)
+  )
+}
+
+htft_prediction_accuracy_stats <- function(db_path) {
+  joined <- eligible_prediction_results(db_path)
+  
+  if (nrow(joined) == 0) {
+    post_results <- with_store(db_path, function(con) {
+      DBI::dbGetQuery(con, "SELECT * FROM postmatch_results ORDER BY match_date DESC")
+    })
+    if (nrow(post_results) == 0) {
+      return(list(total = 0L, htft_hits = 0L, ft_only_hits = 0L, misses = 0L, htft_rate = 0, ft_rate = 0))
+    }
+    
+    teams <- if (exists("super_lig_teams", mode = "function")) super_lig_teams() else tibble::tibble()
+    eval_list <- purrr::map_dfr(seq_len(nrow(post_results)), function(i) {
+      r <- post_results[i, ]
+      ht <- teams |> dplyr::filter(team == r$home_team)
+      at <- teams |> dplyr::filter(team == r$away_team)
+      h_att <- if (nrow(ht) > 0) ht$attack[[1]] else 75
+      h_def <- if (nrow(ht) > 0) ht$defence[[1]] else 75
+      a_att <- if (nrow(at) > 0) at$attack[[1]] else 75
+      a_def <- if (nrow(at) > 0) at$defence[[1]] else 75
+      
+      ehg <- round(pmax(0.4, 1.45 * (h_att / 75) * (75 / a_def) * 1.12), 2)
+      eag <- round(pmax(0.3, 1.15 * (a_att / 75) * (75 / h_def) * 0.88), 2)
+      
+      htft_res <- half_time_and_htft_probabilities(ehg, eag)
+      pred_code <- htft_res$most_likely_htft$code
+      
+      actual_ft <- if (r$home_goals > r$away_goals) "1" else if (r$home_goals < r$away_goals) "2" else "0"
+      pred_ft <- substr(pred_code, nchar(pred_code), nchar(pred_code))
+      
+      pred_ht <- substr(pred_code, 1, 1)
+      actual_ht <- if (r$home_goals >= 2 && r$away_goals == 0) "1" else if (r$home_goals == 0 && r$away_goals >= 2) "2" else "0"
+      
+      htft_exact <- (pred_ft == actual_ft && pred_ht == actual_ht)
+      ft_only <- (pred_ft == actual_ft && !htft_exact)
+      
+      tibble::tibble(htft_hit = htft_exact, ft_only = ft_only)
+    })
+    
+    n_tot <- nrow(eval_list)
+    n_htft <- sum(eval_list$htft_hit, na.rm = TRUE)
+    n_ft_only <- sum(eval_list$ft_only, na.rm = TRUE)
+    n_miss <- n_tot - n_htft - n_ft_only
+    
+    return(list(
+      total = n_tot,
+      htft_hits = n_htft,
+      ft_only_hits = n_ft_only,
+      misses = n_miss,
+      htft_rate = round(n_htft / n_tot, 3),
+      ft_rate = round((n_htft + n_ft_only) / n_tot, 3)
+    ))
+  }
+  
+  eval_list <- purrr::map_dfr(seq_len(nrow(joined)), function(i) {
+    r <- joined[i, ]
+    pred_code <- r$pred_htft %||% "1/1"
+    pred_ft <- substr(pred_code, nchar(pred_code), nchar(pred_code))
+    pred_ht <- substr(pred_code, 1, 1)
+    
+    actual_ft <- if (r$home_goals > r$away_goals) "1" else if (r$home_goals < r$away_goals) "2" else "0"
+    actual_ht <- if (r$home_goals >= 2 && r$away_goals == 0) "1" else if (r$home_goals == 0 && r$away_goals >= 2) "2" else "0"
+    
+    htft_exact <- (pred_ft == actual_ft && pred_ht == actual_ht)
+    ft_only <- (pred_ft == actual_ft && !htft_exact)
+    
+    tibble::tibble(htft_hit = htft_exact, ft_only = ft_only)
+  })
+  
+  n_tot <- nrow(eval_list)
+  n_htft <- sum(eval_list$htft_hit, na.rm = TRUE)
+  n_ft_only <- sum(eval_list$ft_only, na.rm = TRUE)
+  n_miss <- n_tot - n_htft - n_ft_only
+  
+  list(
+    total = n_tot,
+    htft_hits = n_htft,
+    ft_only_hits = n_ft_only,
+    misses = n_miss,
+    htft_rate = round(n_htft / n_tot, 3),
+    ft_rate = round((n_htft + n_ft_only) / n_tot, 3)
+  )
 }
 
 

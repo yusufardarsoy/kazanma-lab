@@ -251,10 +251,39 @@ memory_ui <- function() {
     div(
       class = "section-heading",
       div(class = "eyebrow", "LEARNING LOOP & POST-MATCH INTELLIGENCE"),
-      h1("Model hafızası & Biten maçlar"),
-      p("Biten maçların skorlarını, xG ve kart istatistiklerini izler; modelin bu sonuçlardan öğrenerek takımların hücum/savunma güçlerini nasıl güncellediğini gösterir.")
+      h1("Model hafızası, Biten maçlar & Canlı Skorlar"),
+      p("Biten maçların skorlarını, xG ve kart istatistiklerini izler; skor ve İY/MS tahmin isabetini yuvarlak veri analiziyle sunar.")
     ),
+    div(
+      class = "panel",
+      style = "display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;",
+      div(
+        div(class = "panel-kicker", "CANLI SKOR AKIŞI"),
+        h3(style = "margin: 0;", "Trendyol Süper Lig Canlı Skor Takipçisi")
+      ),
+      actionButton("sync_live_scores_btn", "🔴 Canlı Skorları Tara & Eşitle", class = "btn-primary")
+    ),
+    uiOutput("live_matches_banner"),
     uiOutput("memory_hero_cards"),
+    div(
+      class = "two-column",
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "YUVARLAK VERİ ANALİZİ · KESİN SKOR"),
+        h3("🎯 Kesin Skor Tahmin İsabet Dağılımı"),
+        p("Modelin 1. sıradaki en olası skor tahmini ve Top-3 skor kapsama başarısı."),
+        plotOutput("exact_score_donut_plot", height = 340),
+        uiOutput("exact_score_stats_pills")
+      ),
+      div(
+        class = "panel",
+        div(class = "panel-kicker", "YUVARLAK VERİ ANALİZİ · İY/MS"),
+        h3("⚡ İlk Yarı / Maç Sonu (İY/MS) İsabet Dağılımı"),
+        p("9 farklı İY/MS senaryosunda modelin birincil tahmininin gerçekleşme oranı."),
+        plotOutput("htft_donut_plot", height = 340),
+        uiOutput("htft_stats_pills")
+      )
+    ),
     div(
       class = "panel",
       div(class = "panel-kicker", "MODEL ÖĞRENME EVRİMİ"),
