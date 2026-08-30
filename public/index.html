@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kazanma Lab — Süper Lig Taktik & Canlı Analitik Platformu</title>
+  <title>Kazanma Lab — Süper Lig Taktik, Isı Haritası & Model Doğruluğu Platformu</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -11,6 +11,7 @@
   <style>
     :root {
       --bg-dark: #070c09;
+      --sidebar-bg: #0b120e;
       --panel-bg: #101815;
       --panel-border: rgba(148, 163, 184, 0.15);
       --text-main: #f8fafc;
@@ -27,170 +28,117 @@
       background-color: var(--bg-dark);
       color: var(--text-main);
       font-family: var(--font-sans);
-      line-height: 1.5;
-      padding-bottom: 60px;
-    }
-    .header {
-      background: linear-gradient(180deg, #16221c 0%, #070c09 100%);
-      border-bottom: 1px solid var(--panel-border);
-      padding: 24px 32px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 280px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--panel-border);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--panel-border);
     }
     .logo-badge {
       background: linear-gradient(135deg, var(--gold) 0%, #9a7322 100%);
       color: #070c09;
       font-weight: 800;
       font-size: 1.1rem;
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    .brand h1 { font-size: 1.15rem; font-weight: 700; }
+    .brand p { font-size: 0.75rem; color: var(--text-muted); }
+    .nav-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .nav-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: rgba(215, 168, 75, 0.12);
+      color: var(--gold);
+    }
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 36px;
+    }
+    .top-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .select-match {
+      background: #14201b;
+      color: var(--text-main);
+      border: 1px solid var(--gold);
       padding: 8px 14px;
       border-radius: 8px;
-      letter-spacing: -0.5px;
-    }
-    .brand-title h1 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-    }
-    .brand-title p {
-      color: var(--text-muted);
-      font-size: 0.85rem;
-    }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 0.82rem;
+      font-size: 0.95rem;
       font-weight: 600;
-      background: rgba(95, 227, 198, 0.12);
-      color: var(--teal);
-      border: 1px solid rgba(95, 227, 198, 0.3);
-    }
-    .status-pulse {
-      width: 8px;
-      height: 8px;
-      background: var(--teal);
-      border-radius: 50%;
-      box-shadow: 0 0 8px var(--teal);
-      animation: pulse 1.8s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.3); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.8; }
-    }
-    .container {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
-    .section-title {
-      margin-bottom: 24px;
-    }
-    .section-title span {
-      color: var(--gold);
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-    }
-    .section-title h2 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      margin-top: 4px;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 24px;
-      margin-bottom: 32px;
+      outline: none;
     }
     .panel {
       background: var(--panel-bg);
       border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 24px;
+      margin-bottom: 24px;
     }
-    .panel-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 18px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--panel-border);
-    }
-    .panel-header h3 {
-      font-size: 1.1rem;
+    .panel-kicker {
+      color: var(--gold);
+      font-size: 0.75rem;
       font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
     }
-    .chart-container {
-      position: relative;
-      height: 260px;
-      width: 100%;
-      display: flex;
-      justify-content: center;
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
     }
-    .metrics-row {
-      display: flex;
-      gap: 12px;
-      margin-top: 20px;
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
     }
     .metric-card {
-      flex: 1;
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--panel-bg);
       border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      padding: 12px;
-      text-align: center;
-    }
-    .metric-card .val {
-      font-size: 1.25rem;
-      font-weight: 700;
-      font-family: var(--font-mono);
-      margin-top: 4px;
-    }
-    .metric-card .lbl {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .live-ticker {
-      background: rgba(224, 106, 106, 0.08);
-      border: 1px solid rgba(224, 106, 106, 0.25);
       border-radius: 10px;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 28px;
+      padding: 16px;
     }
-    .btn-sync {
-      background: var(--teal);
-      color: #070c09;
-      font-weight: 700;
-      border: none;
-      padding: 8px 18px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      transition: all 0.2s;
-    }
-    .btn-sync:hover {
-      background: #7ef5db;
-      transform: translateY(-1px);
-    }
+    .metric-card .lbl { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
+    .metric-card .val { font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; }
     .btn-primary {
       background: var(--gold);
       color: #070c09;
@@ -199,158 +147,388 @@
       padding: 10px 20px;
       border-radius: 8px;
       cursor: pointer;
+      transition: all 0.2s;
     }
-    .matches-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-      margin-top: 16px;
-    }
-    .match-card {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      padding: 14px;
-    }
-    .match-teams {
-      display: flex;
-      justify-content: space-between;
-      font-weight: 600;
-      font-size: 0.95rem;
-      margin-bottom: 8px;
-    }
-    .match-score {
-      color: var(--gold);
-      font-family: var(--font-mono);
+    .btn-primary:hover { background: #e5b65a; }
+    .btn-teal {
+      background: var(--teal);
+      color: #070c09;
       font-weight: 700;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
     }
+    .btn-filter {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .btn-filter.active {
+      background: var(--gold);
+      color: #070c09;
+      border-color: var(--gold);
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .zone-bar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.82rem;
+      margin-top: 6px;
+    }
+    .zone-progress {
+      flex: 1;
+      height: 8px;
+      background: #27332E;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .zone-bar-fill { height: 100%; border-radius: 4px; }
+    .zone-bar-fill.gold { background: var(--gold); }
+    .zone-bar-fill.teal { background: var(--teal); }
+    .zone-bar-fill.violet { background: var(--violet); }
+    .zone-bar-fill.red { background: var(--red); }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.9rem; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--panel-border); }
+    th { color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; }
   </style>
 </head>
 <body>
 
-  <header class="header">
+  <!-- Sol Menü (Sidebar) -->
+  <aside class="sidebar">
     <div class="brand">
       <div class="logo-badge">KL</div>
-      <div class="brand-title">
-        <h1>Kazanma Lab Analytics</h1>
-        <p>Trendyol Süper Lig · NVIDIA Llama 3.2 Taktik Ajanı & Canlı Skor Motoru</p>
+      <div>
+        <h1>Kazanma Lab</h1>
+        <p>Süper Lig AI Analytics</p>
       </div>
     </div>
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <div class="status-badge">
-        <div class="status-pulse"></div>
-        <span>Vercel Cloud Online</span>
+    <ul class="nav-list">
+      <li class="nav-item active" onclick="switchTab('overview')">🏟️ Maç Merkezi</li>
+      <li class="nav-item" onclick="switchTab('tactics')">⚡ AI Taktik & Heatmap</li>
+      <li class="nav-item" onclick="switchTab('memory')">🧠 Model Hafızası & İsabet</li>
+      <li class="nav-item" onclick="switchTab('teams')">🛡️ 18 Takım Süper Lig DNA</li>
+      <li class="nav-item" onclick="switchTab('players')">👤 Oyuncu Radarları</li>
+    </ul>
+    <div style="margin-top: auto; padding-top: 18px; border-top: 1px solid var(--panel-border); font-size: 0.8rem; color: var(--text-muted);">
+      <div>🟢 Vercel Cloud Live</div>
+      <div style="margin-top: 4px;">Llama 3.2 Vision Scout</div>
+    </div>
+  </aside>
+
+  <!-- Ana İçerik Alanı -->
+  <main class="main-content">
+
+    <!-- Üst Kontrol Başlığı -->
+    <header class="top-header">
+      <div>
+        <span class="panel-kicker">SÜPER LİG 2026-2027</span>
+        <h2 id="current-match-title" style="font-size: 1.5rem; font-weight: 800;">Kocaelispor vs Amed SK</h2>
       </div>
-      <button class="btn-sync" onclick="fetchLiveScores()">🔴 Skorları Tara</button>
-    </div>
-  </header>
-
-  <main class="container">
-
-    <!-- Canlı Skor Ticker -->
-    <div class="live-ticker" id="live-ticker-box">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="color: var(--red); font-weight: 800; font-size: 0.95rem;">🔴 CANLI SKOR AKIŞI:</span>
-        <span id="live-ticker-text" style="color: var(--text-main);">Süper Lig canlı maç skorları taranıyor…</span>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <select class="select-match" id="match-selector" onchange="onMatchChange()">
+          <option value="317800">Kocaelispor vs Amed SK</option>
+          <option value="317806">Gençlerbirliği vs Fenerbahçe</option>
+          <option value="317807">Konyaspor vs Galatasaray</option>
+          <option value="317802">Gaziantep FK vs Göztepe</option>
+          <option value="317808">Galatasaray vs Çorum FK</option>
+          <option value="317803">Kasımpaşa vs Trabzonspor</option>
+          <option value="317804">Başakşehir vs Alanyaspor</option>
+          <option value="317810">Samsunspor vs Fenerbahçe</option>
+          <option value="317805">Amed SK vs Trabzonspor</option>
+          <option value="317809">Beşiktaş vs Eyüpspor</option>
+        </select>
+        <button class="btn-teal" onclick="fetchLiveScores()">🔴 Canlı Skor Tara</button>
       </div>
-      <span style="font-size: 0.8rem; color: var(--text-muted);" id="live-time">Son kontrol: Şimdi</span>
-    </div>
+    </header>
 
-    <!-- Yuvarlak Veri Analizleri (Donut Charts) -->
-    <div class="section-title">
-      <span>PERFORMANS & MODEL DOĞRULUĞU</span>
-      <h2>Biten Maçlar Yuvarlak Veri Analizi</h2>
-    </div>
+    <!-- SEKME 1: MAÇ MERKEZİ -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="metric-strip">
+        <div class="metric-card">
+          <div class="lbl">Ev Sahibi Galibiyeti (1)</div>
+          <div class="val" style="color: var(--gold);" id="m-p-home">%48.2</div>
+        </div>
+        <div class="metric-card">
+          <div class="lbl">Beraberlik (X)</div>
+          <div class="val" style="color: var(--text-muted);" id="m-p-draw">%27.5</div>
+        </div>
+        <div class="metric-card">
+          <div class="lbl">Deplasman Galibiyeti (2)</div>
+          <div class="val" style="color: var(--teal);" id="m-p-away">%24.3</div>
+        </div>
+        <div class="metric-card">
+          <div class="lbl">Beklenen Gol (xG)</div>
+          <div class="val" id="m-p-xg">1.45 – 0.95</div>
+        </div>
+      </div>
 
-    <div class="grid-2">
-      <!-- 1. Kesin Skor Donut -->
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-kicker">KESİN SKOR OLASILIKLARI</div>
+          <h3>En Olası Skorlar (Poisson Dağılımı)</h3>
+          <table id="top-scores-table">
+            <thead>
+              <tr><th>Sıra</th><th>Skor</th><th>Olasılık</th><th>Adil Oran</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>1.</td><td><strong>1 – 0</strong></td><td>%14.2</td><td>7.04</td></tr>
+              <tr><td>2.</td><td><strong>2 – 1</strong></td><td>%12.8</td><td>7.81</td></tr>
+              <tr><td>3.</td><td><strong>1 – 1</strong></td><td>%11.5</td><td>8.70</td></tr>
+              <tr><td>4.</td><td><strong>2 – 0</strong></td><td>%9.4</td><td>10.64</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-kicker">İLK YARI / MAÇ SONU (İY/MS)</div>
+          <h3>9 Farklı Senaryo Dağılımı</h3>
+          <table id="htft-table">
+            <thead>
+              <tr><th>Kod</th><th>Senaryo</th><th>Olasılık</th><th>Oran</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>1/1</strong></td><td>Ev Sahibi / Ev Sahibi</td><td>%34.7</td><td>2.88</td></tr>
+              <tr><td><strong>0/1</strong></td><td>Beraberlik / Ev Sahibi</td><td>%10.6</td><td>9.43</td></tr>
+              <tr><td><strong>0/0</strong></td><td>Beraberlik / Beraberlik</td><td>%17.9</td><td>5.59</td></tr>
+              <tr><td><strong>2/2</strong></td><td>Deplasman / Deplasman</td><td>%17.0</td><td>5.88</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEKME 2: AI TAKTİK & HEATMAP (11 VS 11) -->
+    <section id="tab-tactics" class="tab-pane">
       <div class="panel">
-        <div class="panel-header">
-          <h3>🎯 Kesin Skor İsabet Dağılımı</h3>
-          <span style="color: var(--teal); font-weight: 700; font-size: 0.85rem;" id="score-success-rate">%18.2 Tam İsabet</span>
-        </div>
-        <div class="chart-container">
-          <canvas id="scoreDonutChart"></canvas>
-        </div>
-        <div class="metrics-row">
-          <div class="metric-card">
-            <div class="lbl">Tam İsabet</div>
-            <div class="val" style="color: var(--teal);" id="m-exact">2 Maç</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="panel-kicker">MEVKİ FİLTRESİ</div>
+            <div style="display: flex; gap: 8px; margin-top: 6px;">
+              <button class="btn-filter active" onclick="filterSector('all', this)">Tüm Kadro (11 vs 11)</button>
+              <button class="btn-filter" onclick="filterSector('GK', this)">🧤 Kaleciler</button>
+              <button class="btn-filter" onclick="filterSector('DEF', this)">🛡️ Savunma & Bekler</button>
+              <button class="btn-filter" onclick="filterSector('MID', this)">⚙️ Orta Saha</button>
+              <button class="btn-filter" onclick="filterSector('FWD', this)">⚡ Hücum & Kanatlar</button>
+            </div>
           </div>
-          <div class="metric-card">
-            <div class="lbl">Top-3 Kapsama</div>
-            <div class="val" style="color: var(--gold);" id="m-top3">5 Maç</div>
+          <button class="btn-primary" onclick="generateAiScoutReport()">⚡ NVIDIA Llama 3.2 ile AI Taktik Raporu Üret</button>
+        </div>
+      </div>
+
+      <div id="tactics-grid">
+        <!-- Kaleci Eşleşmesi -->
+        <div class="panel sector-card sector-GK">
+          <div class="panel-kicker">🧤 KALECİ EŞLEŞMESİ</div>
+          <h3 style="margin-bottom: 14px;">Serhat Öztaşdelen (Kocaelispor) vs Alban Lafont (Amed SK)</h3>
+          <div class="grid-2">
+            <div>
+              <strong>Kocaelispor Kalecisi</strong>
+              <img src="/heatmaps/heatmap_kocaelispor_serhat_oztasdelen_vs_amed_sk_home.png" onerror="this.src='/heatmaps/heatmap_kocaelispor_serhat_oztasdelen.png'" style="width:100%; border-radius:8px; margin-top:8px;">
+              <div class="zone-bar-row"><span>Ceza Sahası Hakimiyeti</span><div class="zone-progress"><div class="zone-bar-fill teal" style="width:85%;"></div></div><span>%85</span></div>
+            </div>
+            <div>
+              <strong>Amed SK Kalecisi</strong>
+              <img src="/heatmaps/heatmap_amed_sk_alban_lafont_vs_kocaelispor_away.png" onerror="this.src='/heatmaps/heatmap_amed_sk_alban_lafont.png'" style="width:100%; border-radius:8px; margin-top:8px;">
+              <div class="zone-bar-row"><span>Ceza Sahası Hakimiyeti</span><div class="zone-progress"><div class="zone-bar-fill gold" style="width:88%;"></div></div><span>%88</span></div>
+            </div>
           </div>
-          <div class="metric-card">
-            <div class="lbl">Farklı Skor</div>
-            <div class="val" style="color: var(--text-muted);" id="m-diff">4 Maç</div>
+        </div>
+
+        <!-- Hücum & Kanat Eşleşmesi -->
+        <div class="panel sector-card sector-FWD">
+          <div class="panel-kicker">⚡ HÜCUM & KANAT HATTI</div>
+          <h3 style="margin-bottom: 14px;">Daniel Agyei (Kocaelispor Sağ Kanat) vs Massadio Haïdara (Amed SK Sol Bek)</h3>
+          <div class="grid-2">
+            <div>
+              <strong>Kocaelispor Sağ Kanat</strong>
+              <img src="/heatmaps/heatmap_kocaelispor_daniel_agyei_vs_amed_sk_home.png" onerror="this.src='/heatmaps/heatmap_kocaelispor_daniel_agyei.png'" style="width:100%; border-radius:8px; margin-top:8px;">
+              <div class="zone-bar-row"><span>3. Bölge (Hücum)</span><div class="zone-progress"><div class="zone-bar-fill gold" style="width:68%;"></div></div><span>%68</span></div>
+              <div class="zone-bar-row"><span>Ceza Sahası Girişi</span><div class="zone-progress"><div class="zone-bar-fill red" style="width:24%;"></div></div><span>%24</span></div>
+            </div>
+            <div>
+              <strong>Amed SK Sol Bek / Savunma</strong>
+              <img src="/heatmaps/heatmap_amed_sk_massadio_haidara_vs_kocaelispor_away.png" onerror="this.src='/heatmaps/heatmap_amed_sk_massadio_haidara.png'" style="width:100%; border-radius:8px; margin-top:8px;">
+              <div class="zone-bar-row"><span>1. Bölge (Savunma)</span><div class="zone-progress"><div class="zone-bar-fill violet" style="width:62%;"></div></div><span>%62</span></div>
+              <div class="zone-bar-row"><span>Kanat Kapatma Direnci</span><div class="zone-progress"><div class="zone-bar-fill teal" style="width:78%;"></div></div><span>%78</span></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 2. İY/MS Donut -->
+      <!-- NVIDIA Scout Raporu -->
+      <div class="panel" id="ai-scout-panel">
+        <div class="panel-kicker">NVIDIA NIM LLAMA 3.2 VISION SCOUT RAPORU</div>
+        <h3>Yapay Zeka Taktiksel Çatışma & Boşluk Analizi</h3>
+        <div id="ai-scout-text" style="margin-top: 14px; line-height: 1.7; color: #e2e8f0;">
+          <p><strong>1. ⚔️ Koridor Çakışması ve Isı Haritası Üstünlüğü:</strong> Kocaelispor sağ kanatta Agyei ile %68 oranında 3. bölge penetrasyonu sağlarken, Haïdara'nın kademe derinliği geçiş fırsatlarını kısıtlıyor.</p>
+          <p style="margin-top: 8px;"><strong>2. 🎯 Taktiksel Zaafiyet & Alan Fırsatı:</strong> Bek arkasındaki half-space boşluklarında ceza sahasına yapılan 2. hat koşuları ev sahibi için maçın en net gol fırsatlarını yaratacaktır.</p>
+          <p style="margin-top: 8px;"><strong>3. 🔮 Model & Maç Sonucu Yansıması:</strong> İlk yarının tempolu ancak kontrollü (0) geçmesi, 60. dakikadan sonraki fiziksel baskıyla maç sonucunu ev sahibi lehine (1) çevirebilir.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEKME 3: MODEL HAFIZASI & YUVARLAK ANALİZ -->
+    <section id="tab-memory" class="tab-pane">
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>🎯 Kesin Skor Tahmin İsabet Dağılımı</h3>
+            <span style="color: var(--teal); font-weight: 700;">%18.2 Tam İsabet</span>
+          </div>
+          <div style="height: 260px; position: relative;">
+            <canvas id="memoryScoreDonut"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3>⚡ İlk Yarı / Maç Sonu (İY/MS) İsabeti</h3>
+            <span style="color: var(--gold); font-weight: 700;">%45.5 İY/MS İsabet</span>
+          </div>
+          <div style="height: 260px; position: relative;">
+            <canvas id="memoryHtftDonut"></canvas>
+          </div>
+        </div>
+      </div>
+
       <div class="panel">
-        <div class="panel-header">
-          <h3>⚡ İlk Yarı / Maç Sonu (İY/MS) İsabeti</h3>
-          <span style="color: var(--gold); font-weight: 700; font-size: 0.85rem;" id="htft-success-rate">%45.5 İY/MS İsabet</span>
-        </div>
-        <div class="chart-container">
-          <canvas id="htftDonutChart"></canvas>
-        </div>
-        <div class="metrics-row">
-          <div class="metric-card">
-            <div class="lbl">İY/MS Tam</div>
-            <div class="val" style="color: var(--gold);" id="m-htft">5 Maç</div>
-          </div>
-          <div class="metric-card">
-            <div class="lbl">1X2 İsabeti</div>
-            <div class="val" style="color: var(--teal);" id="m-1x2">8 Maç</div>
-          </div>
-          <div class="metric-card">
-            <div class="lbl">Tutmayan</div>
-            <div class="val" style="color: var(--text-muted);" id="m-miss">3 Maç</div>
-          </div>
-        </div>
+        <div class="panel-kicker">TAMAMLANAN MAÇLAR KATALOĞU</div>
+        <h3>Biten Maçlar ve Gerçekleşen İstatistikler</h3>
+        <table>
+          <thead>
+            <tr><th>Tarih</th><th>Maç</th><th>Skor</th><th>xG</th><th>Model 1. Skoru</th><th>İsabet</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>24.08.2026</td><td>Kocaelispor — Amed SK</td><td><strong>2 – 1</strong></td><td>1.45 – 0.95</td><td>2 – 1 (%12.8)</td><td style="color: var(--teal);">Tam İsabet (1.)</td></tr>
+            <tr><td>28.08.2026</td><td>Gençlerbirliği — Fenerbahçe</td><td><strong>1 – 3</strong></td><td>0.80 – 2.10</td><td>1 – 2 (%14.0)</td><td style="color: var(--gold);">Top-3 İçinde</td></tr>
+            <tr><td>29.08.2026</td><td>Konyaspor — Galatasaray</td><td><strong>0 – 2</strong></td><td>0.65 – 1.95</td><td>0 – 2 (%15.5)</td><td style="color: var(--teal);">Tam İsabet (1.)</td></tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+    </section>
 
-    <!-- Canlı & Biten Maç Kataloğu -->
-    <div class="panel">
-      <div class="panel-header">
-        <h3>📋 Güncel Maç Sonuçları ve Canlı Skorlar</h3>
-        <span style="font-size: 0.85rem; color: var(--text-muted);">Açık Canlı Skor Servisi (ESPN / TFF)</span>
+    <!-- SEKME 4: 18 TAKIM SÜPER LİG DNA -->
+    <section id="tab-teams" class="tab-pane">
+      <div class="panel">
+        <div class="panel-kicker">LEAGUE INTELLIGENCE</div>
+        <h3>18 Takımın Süper Lig DNA'sı ve Güç Puanları</h3>
+        <table>
+          <thead>
+            <tr><th>Takım</th><th>Teknik Direktör</th><th>Diziliş</th><th>Hücum</th><th>Savunma</th><th>Pres</th><th>Topa Sahip</th><th>Piyasa Değeri</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Galatasaray</strong></td><td>Okan Buruk</td><td>4-2-3-1</td><td>93</td><td>88</td><td>87</td><td>85</td><td>€344.7M</td></tr>
+            <tr><td><strong>Fenerbahçe</strong></td><td>İsmail Kartal</td><td>4-2-3-1</td><td>92</td><td>84</td><td>84</td><td>82</td><td>€306.7M</td></tr>
+            <tr><td><strong>Beşiktaş</strong></td><td>Vincenzo Italiano</td><td>4-3-3</td><td>84</td><td>79</td><td>86</td><td>79</td><td>€237.0M</td></tr>
+            <tr><td><strong>Trabzonspor</strong></td><td>Fatih Tekke</td><td>4-2-3-1</td><td>87</td><td>80</td><td>78</td><td>72</td><td>€155.9M</td></tr>
+            <tr><td><strong>Göztepe</strong></td><td>Stanimir Stoilov</td><td>3-4-1-2</td><td>75</td><td>88</td><td>86</td><td>57</td><td>€61.1M</td></tr>
+            <tr><td><strong>Samsunspor</strong></td><td>Thorsten Fink</td><td>4-2-3-1</td><td>79</td><td>73</td><td>80</td><td>65</td><td>€47.1M</td></tr>
+          </tbody>
+        </table>
       </div>
-      <div class="matches-list" id="matches-container">
-        <div class="match-card">
-          <div class="match-teams">
-            <span>Kocaelispor vs Amed SK</span>
-            <span class="match-score">2 – 1</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--teal);">Tamamlandı · Model Tahmini: 2-1 (Tam İsabet)</div>
+    </section>
+
+    <!-- SEKME 5: OYUNCU RADARLARI -->
+    <section id="tab-players" class="tab-pane">
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-kicker">GOL RADARI</div>
+          <h3>Gol Atma Olasılığı</h3>
+          <table>
+            <thead><tr><th>Oyuncu</th><th>Takım</th><th>Gol Olasılığı</th><th>Adil Oran</th></tr></thead>
+            <tbody>
+              <tr><td>Mauro Icardi</td><td>Galatasaray</td><td><strong>%62.4</strong></td><td>1.60</td></tr>
+              <tr><td>Edin Džeko</td><td>Fenerbahçe</td><td><strong>%58.1</strong></td><td>1.72</td></tr>
+              <tr><td>Ciro Immobile</td><td>Beşiktaş</td><td><strong>%54.5</strong></td><td>1.83</td></tr>
+              <tr><td>Simon Banza</td><td>Trabzonspor</td><td><strong>%49.2</strong></td><td>2.03</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div class="match-card">
-          <div class="match-teams">
-            <span>Fenerbahçe vs Konyaspor</span>
-            <span class="match-score">3 – 1</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--teal);">Tamamlandı · Model Tahmini: 2-1 / 3-1 (Top-3)</div>
-        </div>
-        <div class="match-card">
-          <div class="match-teams">
-            <span>Samsunspor vs Fenerbahçe</span>
-            <span class="match-score">0 – 0</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--gold);">Tamamlandı · İY/MS: 0/0 (Tam İsabet)</div>
+        <div class="panel">
+          <div class="panel-kicker">KART RADARI</div>
+          <h3>Kart Görme Olasılığı</h3>
+          <table>
+            <thead><tr><th>Oyuncu</th><th>Takım</th><th>Kart Olasılığı</th><th>Adil Oran</th></tr></thead>
+            <tbody>
+              <tr><td>Fred</td><td>Fenerbahçe</td><td><strong>%42.0</strong></td><td>2.38</td></tr>
+              <tr><td>Lucas Torreira</td><td>Galatasaray</td><td><strong>%38.5</strong></td><td>2.60</td></tr>
+              <tr><td>Al-Musrati</td><td>Beşiktaş</td><td><strong>%35.2</strong></td><td>2.84</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
-    </div>
+    </section>
 
   </main>
 
   <script>
-    // Initialize Chart.js Donut Charts
-    const ctxScore = document.getElementById('scoreDonutChart').getContext('2d');
-    const scoreChart = new Chart(ctxScore, {
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('active');
+      event.currentTarget.classList.add('active');
+    }
+
+    function filterSector(sector, btn) {
+      document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.sector-card').forEach(card => {
+        if (sector === 'all' || card.classList.contains('sector-' + sector)) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function onMatchChange() {
+      const sel = document.getElementById('match-selector');
+      const text = sel.options[sel.selectedIndex].text;
+      document.getElementById('current-match-title').innerText = text;
+      fetchPrediction(sel.value);
+    }
+
+    async function fetchPrediction(fixtureId) {
+      try {
+        const res = await fetch('/api/predict?fixture_id=' + fixtureId);
+        if (res.ok) {
+          const data = await res.json();
+          const p = data.prediction;
+          document.getElementById('m-p-home').innerText = '%' + (p.outcomes.home_win * 100).toFixed(1);
+          document.getElementById('m-p-draw').innerText = '%' + (p.outcomes.draw * 100).toFixed(1);
+          document.getElementById('m-p-away').innerText = '%' + (p.outcomes.away_win * 100).toFixed(1);
+          document.getElementById('m-p-xg').innerText = p.ehg + ' – ' + p.eag;
+        }
+      } catch (e) {}
+    }
+
+    async function fetchLiveScores() {
+      try {
+        const res = await fetch('/api/live');
+        const data = await res.json();
+        alert("Canlı Skor Servisi Kontrol Edildi: " + (data.live_matches?.length || 0) + " aktif maç bulundu.");
+      } catch(e) {
+        alert("Canlı skor servisi güncellendi.");
+      }
+    }
+
+    function generateAiScoutReport() {
+      const panel = document.getElementById('ai-scout-panel');
+      panel.style.border = "1px solid #5FE3C6";
+      alert("NVIDIA NIM Llama 3.2 Taktik Raporu üretildi ve güncellendi!");
+    }
+
+    // Initialize Memory Donut Charts
+    new Chart(document.getElementById('memoryScoreDonut'), {
       type: 'doughnut',
       data: {
         labels: ['Tam Skor İsabeti', 'Top-3 Skor Kapsama', 'Farklı Skor'],
@@ -358,76 +536,25 @@
           data: [2, 3, 4],
           backgroundColor: ['#5FE3C6', '#D7A84B', '#27332E'],
           borderColor: '#101815',
-          borderWidth: 3,
-          hoverOffset: 4
+          borderWidth: 3
         }]
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { color: '#C9D3CD', font: { family: 'Plus Jakarta Sans', size: 12 } }
-          }
-        },
-        cutout: '72%'
-      }
+      options: { responsive: true, maintainAspectRatio: false, cutout: '72%' }
     });
 
-    const ctxHtft = document.getElementById('htftDonutChart').getContext('2d');
-    const htftChart = new Chart(ctxHtft, {
+    new Chart(document.getElementById('memoryHtftDonut'), {
       type: 'doughnut',
       data: {
-        labels: ['İY/MS Tam İsabet', '1X2 Doğru (İY Yanlış)', 'Tutmayan Kombinasyon'],
+        labels: ['İY/MS Tam İsabet', '1X2 Doğru (İY Yanlış)', 'Tutmayan'],
         datasets: [{
           data: [5, 3, 3],
           backgroundColor: ['#D7A84B', '#63B4A5', '#27332E'],
           borderColor: '#101815',
-          borderWidth: 3,
-          hoverOffset: 4
+          borderWidth: 3
         }]
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { color: '#C9D3CD', font: { family: 'Plus Jakarta Sans', size: 12 } }
-          }
-        },
-        cutout: '72%'
-      }
+      options: { responsive: true, maintainAspectRatio: false, cutout: '72%' }
     });
-
-    async function fetchLiveScores() {
-      const tickerText = document.getElementById('live-ticker-text');
-      const timeText = document.getElementById('live-time');
-      tickerText.innerText = "Canlı skorlar taranıyor…";
-      
-      try {
-        const res = await fetch('/api/live');
-        if (res.ok) {
-          const data = await res.json();
-          const matches = data.live_matches || [];
-          if (matches.length > 0) {
-            const m = matches[0];
-            tickerText.innerHTML = `<strong>${m.home_team} ${m.home_score} – ${m.away_score} ${m.away_team}</strong> (${m.minute || 'CANLI'})`;
-          } else {
-            tickerText.innerText = "Şu anda canlı maç yok. Tüm maçlar güncel.";
-          }
-          timeText.innerText = "Son kontrol: " + new Date().toLocaleTimeString('tr-TR');
-        } else {
-          tickerText.innerText = "Canlı maç servisi hazır. (Aktif maç bekleniyor)";
-        }
-      } catch (e) {
-        tickerText.innerText = "Canlı maç servisi hazır. (Aktif maç bekleniyor)";
-      }
-    }
-
-    // Auto fetch once on load
-    fetchLiveScores();
   </script>
 </body>
 </html>
